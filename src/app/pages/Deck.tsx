@@ -148,10 +148,10 @@ export function Deck() {
               <div className="min-w-0">
                 <p className="text-[15px] font-medium leading-snug">{card.term}</p>
                 {card.hasImage ? (
-                  <img src={`/api/decks/${deck.id}/cards/${card.id}/file`} alt="" loading="lazy" decoding="async" className="mt-2 h-20 w-28 rounded-[12px] object-cover" />
+                  <img src={`/api/decks/${deck.id}/cards/${card.id}/file?v=${card.fileVersion ?? ''}`} alt="" loading="lazy" decoding="async" className="mt-2 h-20 w-28 rounded-[12px] object-cover" />
                 ) : card.fileName ? (
                   <a
-                    href={`/api/decks/${deck.id}/cards/${card.id}/file`}
+                    href={`/api/decks/${deck.id}/cards/${card.id}/file?v=${card.fileVersion ?? ''}`}
                     download={card.fileName}
                     className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-tile bg-surface-2 px-2.5 py-1.5 text-[12.5px] font-medium text-muted hover:text-fg"
                   >
@@ -198,11 +198,13 @@ export function Deck() {
         ))}
         {cards.length === 0 && (
           <li className="rounded-card border-2 border-dashed border-line-strong py-12 text-center">
-            <p className="text-[15px] font-medium">No cards yet</p>
-            <Button variant="primary" className="mt-4" onClick={() => setAdding(true)}>
-              <Plus />
-              Add cards
-            </Button>
+            <p className="text-[15px] font-medium">{canEdit ? 'No cards yet' : 'No cards published here yet'}</p>
+            {canEdit && (
+              <Button variant="primary" className="mt-4" onClick={() => setAdding(true)}>
+                <Plus />
+                Add cards
+              </Button>
+            )}
           </li>
         )}
       </ul>

@@ -71,7 +71,7 @@ export async function seedUser(db: D1Database, owner: string) {
     const lastStudied = di === 0 ? t - 3 * 3_600_000 : di === 1 ? t - 1.2 * DAY : t - 6 * DAY
     statements.push(
       db
-        .prepare(`INSERT INTO decks (id, owner_sub, title, description, hue, last_studied_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .prepare(`INSERT INTO decks (id, owner_sub, title, description, hue, shared, last_studied_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`)
         .bind(deckId, owner, deck.title, deck.description, hueFor(deck.title), lastStudied, t - (20 - di * 4) * DAY, lastStudied),
     )
     deck.cards.forEach(([term, definition], ci) => {
@@ -111,6 +111,11 @@ export async function seedUser(db: D1Database, owner: string) {
 
   statements.push(db.prepare(`UPDATE users SET seeded_at = ? WHERE owner_sub = ?`).bind(t, owner))
   for (let i = 0; i < statements.length; i += 40) await db.batch(statements.slice(i, i + 40))
+}
+
+/** Everything a student owns is their own history; never the shared library. */
+export async function clearProgress(db: D1Database, owner: string) {
+  await db.batch(['sessions', 'card_progress_v2'].map((table) => db.prepare(`DELETE FROM ${table} WHERE owner_sub = ?`).bind(owner)))
 }
 
 export async function clearUser(db: D1Database, owner: string) {

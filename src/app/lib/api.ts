@@ -75,12 +75,31 @@ export function recordSession(deckId: string, mode: StudyMode, results: SessionR
   })
 }
 
+// Browsers report no type for some extensions; the server only accepts the
+// allowlist, so map the common ones instead of sending octet-stream.
+const EXTENSION_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  txt: 'text/plain',
+  csv: 'text/csv',
+  md: 'text/markdown',
+  rtf: 'application/rtf',
+  epub: 'application/epub+zip',
+}
+
 // The file is the request body, so the Worker streams it straight into R2
 // instead of parsing a multipart form that would buffer it in memory.
 export async function uploadCardAttachment(deckId: string, cardId: string, file: File) {
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+  const type = file.type || EXTENSION_TYPES[extension] || 'application/octet-stream'
   await api(`/decks/${deckId}/cards/${cardId}/file`, {
     method: 'PUT',
     body: file,
-    headers: { 'content-type': file.type || 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) },
+    headers: { 'content-type': type, 'x-file-name': encodeURIComponent(file.name) },
   })
 }

@@ -4,7 +4,7 @@ import { authMode, privateJson } from '../auth'
 import { mapSession, now, requireAdmin, streakFrom } from '../db'
 import { googleConfigured } from '../google'
 import type { AppContext } from '../env'
-import { clearUser, seedUser } from '../seed'
+import { clearProgress, clearUser, seedUser } from '../seed'
 import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
 import type { Me, Stats, Storage } from '../../shared/types'
 
@@ -32,7 +32,11 @@ account.get('/me', async (c) => {
   }
   // Everything the admin owns is the class library. Doing it here also brings
   // decks created before roles existed into view for everyone.
-  if (role === 'admin') await db.prepare(`UPDATE decks SET shared = 1 WHERE owner_sub = ? AND shared = 0`).bind(user.sub).run()
+  if (role === 'admin') {
+    // Read first: an unconditional UPDATE would spend a write on every page load.
+    const stale = await db.prepare(`SELECT COUNT(*) AS n FROM decks WHERE owner_sub = ? AND shared = 0`).bind(user.sub).first<{ n: number }>()
+    if (Number(stale?.n)) await db.prepare(`UPDATE decks SET shared = 1 WHERE owner_sub = ? AND shared = 0`).bind(user.sub).run()
+  }
   const body: Me = {
     user: { sub: user.sub, name: user.name, email: user.email, picture: user.picture },
     streak: streakFrom(await sessionDays(db, user.sub)).current,
@@ -124,6 +128,9 @@ account.post('/account/reset', requireAdmin, async (c) => {
 })
 
 account.delete('/account/data', async (c) => {
-  await clearUser(c.get('db'), c.get('user').sub)
+  // A student clears their own history only. Deleting decks and cards here would
+  // let a demoted admin wipe the class library through their own settings page.
+  if (c.get('role') === 'admin') await clearUser(c.get('db'), c.get('user').sub)
+  else await clearProgress(c.get('db'), c.get('user').sub)
   return privateJson(c, { ok: true })
 })

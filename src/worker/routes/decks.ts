@@ -82,6 +82,8 @@ decks.patch('/:id', async (c) => {
 decks.delete('/:id', async (c) => {
   const db = c.get('db')
   const deckId = c.req.param('id')
+  const deck = await db.prepare(`SELECT id FROM decks WHERE id = ?`).bind(deckId).first()
+  if (!deck) return c.json({ error: 'Not found.' }, 404)
   const keys = await db.prepare(`SELECT image_key FROM cards WHERE deck_id = ? AND image_key IS NOT NULL`).bind(deckId).all<{ image_key: string }>()
   await db.batch([
     db.prepare(`DELETE FROM sessions WHERE deck_id = ?`).bind(deckId),
@@ -245,11 +247,15 @@ decks.get('/:id/cards/:cardId/file', async (c) => {
   // Only images render inline. Everything else downloads, so a document can never
   // execute as a page on this origin.
   const disposition = type.startsWith('image/') ? 'inline' : 'attachment'
+  // Header values must be latin-1: a filename like "Übersicht.pdf" would throw
+  // when the Response is built, so only ASCII goes in the plain parameter and
+  // the full name travels in the RFC 5987 form.
+  const asciiName = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '') || 'attachment'
   return new Response(object.body, {
     headers: {
       'Content-Type': type,
       'Content-Length': String(object.size),
-      'Content-Disposition': `${disposition}; filename="${name.replace(/["\\]/g, '')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Content-Disposition': `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
       'Cache-Control': 'private, max-age=300',
       'X-Content-Type-Options': 'nosniff',
     },
@@ -306,7 +312,9 @@ decks.post('/:id/sessions', async (c) => {
       .prepare(`INSERT INTO sessions (id, owner_sub, deck_id, mode, score, total, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(sessionId, owner, deckId, input.mode, score, total, Math.max(0, Math.round(Number(input.durationMs) || 0)), t),
   )
-  statements.push(db.prepare(`UPDATE decks SET last_studied_at = ?, updated_at = ? WHERE owner_sub = ? AND id = ?`).bind(t, t, owner, deckId))
+  // The deck is not necessarily owned by the person studying it, so this must
+  // match on id alone — otherwise a student's session never records.
+  statements.push(db.prepare(`UPDATE decks SET last_studied_at = ?, updated_at = ? WHERE id = ?`).bind(t, t, deckId))
   for (let i = 0; i < statements.length; i += 40) await db.batch(statements.slice(i, i + 40))
   return privateJson(c, { session: { id: sessionId, score, total, accuracy: total ? Math.round((score / total) * 100) : 0 } }, 201)
 })

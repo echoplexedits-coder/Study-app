@@ -110,7 +110,7 @@ export function Flashcards() {
                 >
                   <motion.div animate={{ rotateY: flipped ? 180 : 0 }} transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }} className="preserve-3d relative size-full">
                     <Face label="Term" className="bg-surface">
-                      {card.hasImage && <img src={`/api/decks/${data.deck.id}/cards/${card.id}/file`} alt="" loading="lazy" decoding="async" className="mb-6 max-h-[180px] rounded-[16px] object-cover" />}
+                      {card.hasImage && <img src={`/api/decks/${data.deck.id}/cards/${card.id}/file?v=${card.fileVersion ?? ''}`} alt="" loading="lazy" decoding="async" className="mb-6 max-h-[180px] rounded-[16px] object-cover" />}
                       <p className="text-balance text-center text-[32px] font-bold tracking-tight sm:text-[40px]">{card.term}</p>
                     </Face>
                     <Face label="Definition" className="bg-fg text-white [transform:rotateY(180deg)]">

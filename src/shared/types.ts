@@ -34,6 +34,8 @@ export interface Card {
   fileName: string | null
   fileSize: number
   fileType: string | null
+  // Changes whenever the attachment is replaced; used to bust the browser cache.
+  fileVersion: string | null
   position: number
   progress: { correct: number; incorrect: number; streak: number; mastery: number; nextDue: number | null; lastSeen: number | null }
 }

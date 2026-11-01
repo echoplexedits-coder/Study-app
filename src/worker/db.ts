@@ -35,18 +35,6 @@ const SCHEMA = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS cards_deck ON cards(owner_sub, deck_id, position)`,
-  `CREATE TABLE IF NOT EXISTS card_progress (
-    card_id TEXT PRIMARY KEY,
-    owner_sub TEXT NOT NULL,
-    deck_id TEXT NOT NULL,
-    correct INTEGER NOT NULL DEFAULT 0,
-    incorrect INTEGER NOT NULL DEFAULT 0,
-    streak INTEGER NOT NULL DEFAULT 0,
-    mastery INTEGER NOT NULL DEFAULT 0,
-    next_due INTEGER,
-    last_seen INTEGER
-  )`,
-  `CREATE INDEX IF NOT EXISTS progress_deck ON card_progress(owner_sub, deck_id)`,
   `CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     owner_sub TEXT NOT NULL,
@@ -105,11 +93,14 @@ async function migrate(db: D1Database) {
     await db.prepare(`ALTER TABLE decks ADD COLUMN shared INTEGER NOT NULL DEFAULT 0`).run()
   }
 
-  // One-time copy of the old single-row-per-card progress into the per-user table.
-  const copied = await db.prepare(`SELECT COUNT(*) AS n FROM card_progress_v2`).first<{ n: number }>()
-  if (!Number(copied?.n)) {
+  // One-time move of the old single-row-per-card progress into the per-user
+  // table, then the old table is dropped. Leaving it behind would let a later
+  // cold start resurrect progress a user had deleted.
+  const legacy = await db.prepare(`PRAGMA table_info(card_progress)`).all<{ name: string }>()
+  if (legacy.results.length) {
     await db.prepare(`INSERT OR IGNORE INTO card_progress_v2 (owner_sub, card_id, deck_id, correct, incorrect, streak, mastery, next_due, last_seen)
       SELECT owner_sub, card_id, deck_id, correct, incorrect, streak, mastery, next_due, last_seen FROM card_progress`).run()
+    await db.prepare(`DROP TABLE card_progress`).run()
   }
 }
 
@@ -207,6 +198,7 @@ export function mapCard(r: Row) {
     fileName: (r.file_name as string | null) ?? null,
     fileSize: Number(r.file_size ?? 0),
     fileType: (r.file_type as string | null) ?? null,
+    fileVersion: r.image_key ? String(r.image_key).split('/').pop() ?? null : null,
     position: Number(r.position ?? 0),
     progress: {
       correct: Number(r.correct ?? 0),

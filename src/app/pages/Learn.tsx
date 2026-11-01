@@ -116,7 +116,7 @@ export function Learn() {
                 <span className="text-[12.5px] font-medium text-faint">
                   {index + 1} of {questions.length}
                 </span>
-                {question.card.hasImage && <img src={`/api/decks/${data.deck.id}/cards/${question.card.id}/file`} alt="" className="mt-4 max-h-[140px] rounded-[16px] object-cover" />}
+                {question.card.hasImage && <img src={`/api/decks/${data.deck.id}/cards/${question.card.id}/file?v=${question.card.fileVersion ?? ''}`} alt="" className="mt-4 max-h-[140px] rounded-[16px] object-cover" />}
                 <p className="mt-4 text-balance text-center text-[30px] font-bold tracking-tight sm:text-[38px]">{question.card.term}</p>
                 <p className="mt-3 text-[14px] text-muted">Choose the definition</p>
               </div>
