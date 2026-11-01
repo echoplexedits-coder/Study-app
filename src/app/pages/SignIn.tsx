@@ -2,11 +2,13 @@ import { motion } from 'motion/react'
 import { ArrowRight, Database } from 'lucide-react'
 
 import { Logo } from '../components/Shell'
+import { Skeleton } from '../components/ui'
 import { useAuthStatus } from '../lib/api'
 
 export function SignIn() {
   const returnTo = encodeURIComponent(`${window.location.pathname}${window.location.search}`)
-  const google = useAuthStatus().data?.google === true
+  const status = useAuthStatus()
+  const google = status.data?.google === true
   return (
     <div className="flex min-h-screen flex-col">
       <header className="mx-auto flex h-16 w-full max-w-[1120px] items-center px-5 sm:px-8">
@@ -16,35 +18,41 @@ export function SignIn() {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} className="max-w-md">
           <h1 className="text-balance text-[34px] font-bold leading-[1.06] tracking-[-0.03em] sm:text-[52px]">Remember what you learn</h1>
           <p className="mt-4 text-[16px] leading-relaxed text-muted">Flashcards, quizzes and matching games that schedule themselves around what you forget. Sign in to open your library.</p>
-          <div className="mt-8 flex flex-col items-start gap-3">
-            {google && (
-              <a
-                href={`/auth/google/start?returnTo=${returnTo}`}
-                className="inline-flex h-12 items-center gap-2 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#2a2838]"
-              >
-                <span className="grid size-5 place-items-center rounded-[6px] bg-white text-[12px] font-bold text-[#1a73e8]">G</span>
-                Continue with Google
-                <ArrowRight className="size-4" />
-              </a>
+          <div className="mt-8 flex max-w-sm flex-col items-stretch gap-3">
+            {status.isPending ? (
+              <Skeleton className="h-12 rounded-control" />
+            ) : google ? (
+              <>
+                <a
+                  href={`/auth/google/start?returnTo=${returnTo}`}
+                  className="inline-flex h-12 items-center justify-center gap-2.5 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#2a2838]"
+                >
+                  <span className="grid size-5 place-items-center rounded-[6px] bg-white text-[12px] font-bold text-[#1a73e8]">G</span>
+                  Continue with Google
+                  <ArrowRight className="size-4" />
+                </a>
+                <p className="text-[13px] leading-relaxed text-muted">Sign in with the Google account you already use. No new account to create, no password to remember.</p>
+                <p className="text-[13px] text-faint">
+                  Have a Freebuff account?{' '}
+                  <a href={`/auth/freebuff/signin?returnTo=${returnTo}`} className="font-medium text-accent underline underline-offset-2 hover:text-accent-deep">
+                    Sign in with Freebuff
+                  </a>
+                </p>
+              </>
+            ) : (
+              <>
+                <a
+                  href={`/auth/freebuff/signin?returnTo=${returnTo}`}
+                  className="inline-flex h-12 items-center justify-center gap-2.5 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#2a2838]"
+                >
+                  <span className="grid size-5 place-items-center rounded-[6px] bg-white text-[11px] font-bold text-fg">F</span>
+                  Sign in with Freebuff
+                  <ArrowRight className="size-4" />
+                </a>
+                <p className="text-[13px] leading-relaxed text-muted">Google sign-in is not switched on for this site yet, so accounts go through Freebuff for now.</p>
+              </>
             )}
-            <a
-              href={`/auth/freebuff/signin?returnTo=${returnTo}`}
-              className={
-                google
-                  ? 'inline-flex h-12 items-center gap-2 rounded-control bg-surface px-5 text-[15px] font-medium text-fg shadow-card transition-colors hover:bg-surface-2'
-                  : 'inline-flex h-12 items-center gap-2 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#2a2838]'
-              }
-            >
-              <span className="grid size-5 place-items-center rounded-[6px] bg-white text-[11px] font-bold text-fg">F</span>
-              Sign in with Freebuff
-              <ArrowRight className="size-4" />
-            </a>
           </div>
-          <p className="mt-4 text-[13px] text-faint">
-            {google
-              ? 'Google signs you in with your Gmail address. Freebuff adds GitHub and Apple accounts.'
-              : 'Uses your Freebuff account. No password to remember, which is the point.'}
-          </p>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 24, rotate: -2 }} animate={{ opacity: 1, y: 0, rotate: -2 }} transition={{ duration: 0.8, delay: 0.15, ease: [0.22, 1, 0.36, 1] }} className="relative mx-auto hidden w-full max-w-[460px] lg:block">
           <div className="absolute inset-0 translate-x-4 translate-y-4 rotate-3 rounded-[28px] bg-accent-soft" />
