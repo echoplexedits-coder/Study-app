@@ -1,5 +1,7 @@
 import type { FreebuffUser } from '@freebuff/auth'
 
+import type { Role } from '../shared/types'
+
 export interface Env {
   ASSETS: Fetcher
   // Attached by Freebuff Sites once provisioned (sites_add_storage). Optional so
@@ -19,6 +21,7 @@ export interface Env {
 export type Variables = {
   user: FreebuffUser
   db: D1Database
+  role: Role
 }
 
 export type AppContext = { Bindings: Env; Variables: Variables }

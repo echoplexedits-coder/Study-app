@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { authMode, getAuth, requireUser } from './auth'
-import { requireDb } from './db'
+import { loadRole, requireDb } from './db'
 import type { AppContext, Env } from './env'
 import { googleCallback, googleConfigured, googleSignout, googleStart } from './google'
 import { account } from './routes/account'
@@ -21,7 +21,7 @@ app.get('/auth/google/callback', googleCallback)
 app.post('/auth/google/signout', googleSignout)
 
 const api = new Hono<AppContext>()
-api.use('*', requireUser, requireDb)
+api.use('*', requireUser, requireDb, loadRole)
 api.route('/', account)
 api.route('/decks', decks)
 app.route('/api', api)

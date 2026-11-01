@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { authMode, privateJson } from '../auth'
-import { mapSession, now, streakFrom } from '../db'
+import { mapSession, now, requireAdmin, streakFrom } from '../db'
 import { googleConfigured } from '../google'
 import type { AppContext } from '../env'
 import { clearUser, seedUser } from '../seed'
@@ -18,13 +18,21 @@ async function sessionDays(db: D1Database, owner: string): Promise<Set<string>> 
 account.get('/me', async (c) => {
   const user = c.get('user')
   const db = c.get('db')
+  const role = c.get('role')
   let row = await db.prepare(`SELECT seeded_at FROM users WHERE owner_sub = ?`).bind(user.sub).first<{ seeded_at: number | null }>()
   if (!row) {
     await db.prepare(`INSERT INTO users (owner_sub, created_at) VALUES (?, ?)`).bind(user.sub, now()).run()
-    // First visit: furnish the library with sample decks and some history.
-    await seedUser(db, user.sub)
-    row = { seeded_at: now() }
+    // Only the admin gets a furnished library; students study what is published.
+    if (role === 'admin') {
+      await seedUser(db, user.sub)
+      row = { seeded_at: now() }
+    } else {
+      row = { seeded_at: null }
+    }
   }
+  // Everything the admin owns is the class library. Doing it here also brings
+  // decks created before roles existed into view for everyone.
+  if (role === 'admin') await db.prepare(`UPDATE decks SET shared = 1 WHERE owner_sub = ? AND shared = 0`).bind(user.sub).run()
   const body: Me = {
     user: { sub: user.sub, name: user.name, email: user.email, picture: user.picture },
     streak: streakFrom(await sessionDays(db, user.sub)).current,
@@ -34,6 +42,8 @@ account.get('/me', async (c) => {
       files: Boolean(c.env.FILES),
       auth: user.sub.startsWith('google:') ? 'google' : authMode(c.env, c.req.raw) === 'freebuff' ? 'freebuff' : 'development',
       google: googleConfigured(c.env),
+      role,
+      canEdit: role === 'admin',
     },
   }
   return privateJson(c, body)
@@ -45,8 +55,8 @@ account.get('/stats', async (c) => {
   const since = now() - 84 * 86_400_000
   const [totals, mastered, cards, days, recent, decks] = await db.batch([
     db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(duration_ms), 0) AS ms FROM sessions WHERE owner_sub = ?`).bind(owner),
-    db.prepare(`SELECT COUNT(*) AS n FROM card_progress WHERE owner_sub = ? AND mastery >= 80`).bind(owner),
-    db.prepare(`SELECT COUNT(*) AS n FROM cards WHERE owner_sub = ?`).bind(owner),
+    db.prepare(`SELECT COUNT(*) AS n FROM card_progress_v2 p JOIN decks d ON d.id = p.deck_id WHERE p.owner_sub = ? AND p.mastery >= 80 AND (d.owner_sub = ? OR d.shared = 1)`).bind(owner, owner),
+    db.prepare(`SELECT COUNT(*) AS n FROM cards c JOIN decks d ON d.id = c.deck_id WHERE d.owner_sub = ? OR d.shared = 1`).bind(owner),
     db
       .prepare(
         `SELECT date(created_at / 1000, 'unixepoch') AS day, COUNT(*) AS n, SUM(score) AS s, SUM(total) AS t FROM sessions WHERE owner_sub = ? AND created_at >= ? GROUP BY day ORDER BY day`,
@@ -57,10 +67,10 @@ account.get('/stats', async (c) => {
       .prepare(
         `SELECT d.id, d.title, d.hue,
           (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id) AS card_count,
-          (SELECT COALESCE(AVG(COALESCE(p.mastery, 0)), 0) FROM cards c LEFT JOIN card_progress p ON p.card_id = c.id WHERE c.deck_id = d.id) AS mastery
-         FROM decks d WHERE d.owner_sub = ? ORDER BY mastery DESC`,
+          (SELECT COALESCE(AVG(COALESCE(p.mastery, 0)), 0) FROM cards c LEFT JOIN card_progress_v2 p ON p.card_id = c.id AND p.owner_sub = ? WHERE c.deck_id = d.id) AS mastery
+         FROM decks d WHERE d.owner_sub = ? OR d.shared = 1 ORDER BY mastery DESC`,
       )
-      .bind(owner),
+      .bind(owner, owner),
   ])
 
   const byDay = new Map((days.results as { day: string; n: number; s: number; t: number }[]).map((r) => [r.day, r]))
@@ -105,7 +115,7 @@ account.get('/storage', async (c) => {
   return privateJson(c, body)
 })
 
-account.post('/account/reset', async (c) => {
+account.post('/account/reset', requireAdmin, async (c) => {
   const db = c.get('db')
   const owner = c.get('user').sub
   await clearUser(db, owner)

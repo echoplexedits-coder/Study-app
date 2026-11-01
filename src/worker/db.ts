@@ -1,6 +1,8 @@
 import type { MiddlewareHandler } from 'hono'
+import type { FreebuffUser } from '@freebuff/auth'
 
 import type { AppContext } from './env'
+import type { Role } from '../shared/types'
 
 // Schema lives with the Worker: D1 has no migration tool on Freebuff Sites, so
 // tables are created on the first request of each isolate. Add new statements
@@ -56,6 +58,30 @@ const SCHEMA = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS sessions_owner ON sessions(owner_sub, created_at DESC)`,
+  // Who may manage the library. Admins are rows here, not a list in the code,
+  // so a role can be granted or revoked by editing one table.
+  `CREATE TABLE IF NOT EXISTS roles (
+    email TEXT PRIMARY KEY,
+    role TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `INSERT OR IGNORE INTO roles (email, role, created_at)
+    VALUES ('echoplexedits@gmail.com', 'admin', CAST(strftime('%s', 'now') AS INTEGER) * 1000)`,
+  // Progress is per person, not per card, so a deck shared with everyone still
+  // tracks each student separately. The old table kept one row per card.
+  `CREATE TABLE IF NOT EXISTS card_progress_v2 (
+    owner_sub TEXT NOT NULL,
+    card_id TEXT NOT NULL,
+    deck_id TEXT NOT NULL,
+    correct INTEGER NOT NULL DEFAULT 0,
+    incorrect INTEGER NOT NULL DEFAULT 0,
+    streak INTEGER NOT NULL DEFAULT 0,
+    mastery INTEGER NOT NULL DEFAULT 0,
+    next_due INTEGER,
+    last_seen INTEGER,
+    PRIMARY KEY (owner_sub, card_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS progress_v2_deck ON card_progress_v2(owner_sub, deck_id)`,
 ]
 
 // Columns added after the first deploy. `CREATE TABLE IF NOT EXISTS` cannot
@@ -67,10 +93,23 @@ const COLUMNS: [name: string, type: string][] = [
 ]
 
 async function migrate(db: D1Database) {
-  const info = await db.prepare(`PRAGMA table_info(cards)`).all<{ name: string }>()
-  const existing = new Set(info.results.map((row) => row.name))
+  const cardInfo = await db.prepare(`PRAGMA table_info(cards)`).all<{ name: string }>()
+  const cardColumns = new Set(cardInfo.results.map((row) => row.name))
   for (const [name, type] of COLUMNS) {
-    if (!existing.has(name)) await db.prepare(`ALTER TABLE cards ADD COLUMN ${name} ${type}`).run()
+    if (!cardColumns.has(name)) await db.prepare(`ALTER TABLE cards ADD COLUMN ${name} ${type}`).run()
+  }
+
+  // A shared deck belongs to the class library rather than to one person.
+  const deckInfo = await db.prepare(`PRAGMA table_info(decks)`).all<{ name: string }>()
+  if (!deckInfo.results.some((row) => row.name === 'shared')) {
+    await db.prepare(`ALTER TABLE decks ADD COLUMN shared INTEGER NOT NULL DEFAULT 0`).run()
+  }
+
+  // One-time copy of the old single-row-per-card progress into the per-user table.
+  const copied = await db.prepare(`SELECT COUNT(*) AS n FROM card_progress_v2`).first<{ n: number }>()
+  if (!Number(copied?.n)) {
+    await db.prepare(`INSERT OR IGNORE INTO card_progress_v2 (owner_sub, card_id, deck_id, correct, incorrect, streak, mastery, next_due, last_seen)
+      SELECT owner_sub, card_id, deck_id, correct, incorrect, streak, mastery, next_due, last_seen FROM card_progress`).run()
   }
 }
 
@@ -100,6 +139,27 @@ export const requireDb: MiddlewareHandler<AppContext> = async (c, next) => {
 export const id = () => crypto.randomUUID()
 export const now = () => Date.now()
 
+/** The role comes from the database, never from a request or a hardcoded list. */
+export async function roleFor(db: D1Database, user: FreebuffUser): Promise<Role> {
+  const email = user.email?.trim().toLowerCase()
+  if (!email) return 'student'
+  const row = await db.prepare(`SELECT role FROM roles WHERE email = ?`).bind(email).first<{ role: string }>()
+  return row?.role === 'admin' ? 'admin' : 'student'
+}
+
+export const loadRole: MiddlewareHandler<AppContext> = async (c, next) => {
+  c.set('role', await roleFor(c.get('db'), c.get('user')))
+  await next()
+}
+
+/** Content changes are the admin's alone; students read and study what is published. */
+export const requireAdmin: MiddlewareHandler<AppContext> = async (c, next) => {
+  if (c.get('role') !== 'admin') {
+    return c.json({ error: 'admin_required', message: 'Only the site admin can add, change or remove library content.' }, 403)
+  }
+  await next()
+}
+
 export function hueFor(text: string): number {
   let h = 0
   for (const ch of text) h = (h * 31 + ch.charCodeAt(0)) % 360
@@ -111,9 +171,9 @@ type Row = Record<string, unknown>
 export const DECK_SELECT = `
   SELECT d.*,
     (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id AND c.owner_sub = d.owner_sub) AS card_count,
-    (SELECT COUNT(*) FROM card_progress p WHERE p.deck_id = d.id AND p.owner_sub = d.owner_sub AND p.mastery >= 80) AS mastered,
-    (SELECT COALESCE(AVG(COALESCE(p.mastery, 0)), 0) FROM cards c LEFT JOIN card_progress p ON p.card_id = c.id WHERE c.deck_id = d.id AND c.owner_sub = d.owner_sub) AS mastery,
-    (SELECT COUNT(*) FROM cards c LEFT JOIN card_progress p ON p.card_id = c.id WHERE c.deck_id = d.id AND c.owner_sub = d.owner_sub AND (p.next_due IS NULL OR p.next_due <= ?)) AS due_count
+    (SELECT COUNT(*) FROM card_progress_v2 p WHERE p.deck_id = d.id AND p.owner_sub = ? AND p.mastery >= 80) AS mastered,
+    (SELECT COALESCE(AVG(COALESCE(p.mastery, 0)), 0) FROM cards c LEFT JOIN card_progress_v2 p ON p.card_id = c.id AND p.owner_sub = ? WHERE c.deck_id = d.id AND c.owner_sub = d.owner_sub) AS mastery,
+    (SELECT COUNT(*) FROM cards c LEFT JOIN card_progress_v2 p ON p.card_id = c.id AND p.owner_sub = ? WHERE c.deck_id = d.id AND c.owner_sub = d.owner_sub AND (p.next_due IS NULL OR p.next_due <= ?)) AS due_count
   FROM decks d`
 
 export function mapDeck(r: Row) {
@@ -134,7 +194,7 @@ export function mapDeck(r: Row) {
 
 export const CARD_SELECT = `
   SELECT c.*, p.correct, p.incorrect, p.streak, p.mastery, p.next_due, p.last_seen
-  FROM cards c LEFT JOIN card_progress p ON p.card_id = c.id`
+  FROM cards c LEFT JOIN card_progress_v2 p ON p.card_id = c.id AND p.owner_sub = ?`
 
 export function mapCard(r: Row) {
   return {

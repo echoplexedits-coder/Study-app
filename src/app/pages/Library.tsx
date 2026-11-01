@@ -9,6 +9,7 @@ import type { Deck } from '../../shared/types'
 
 export function Library() {
   const { data: me } = useMe()
+  const canEdit = me?.capabilities.canEdit ?? false
   const { data, isLoading, isError } = useDecks()
   const [creating, setCreating] = useState(false)
   const decks = data?.items ?? []
@@ -27,10 +28,12 @@ export function Library() {
           </h1>
           <p className="mt-1 text-[14.5px] text-muted">{due > 0 ? `${due} ${due === 1 ? 'card is' : 'cards are'} due for review` : 'Nothing due. A good day to learn something new.'}</p>
         </div>
-        <Button variant="primary" onClick={() => setCreating(true)}>
-          <Plus />
-          New deck
-        </Button>
+        {canEdit && (
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus />
+            New deck
+          </Button>
+        )}
       </div>
 
       {next && (
@@ -54,13 +57,16 @@ export function Library() {
         </Link>
       )}
 
-      <h2 className="mt-10 text-[14px] font-semibold text-muted">Your decks</h2>
+      <div className="mt-10 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="text-[14px] font-semibold text-muted">{canEdit ? 'Your decks' : 'Class library'}</h2>
+        {!canEdit && <span className="text-[12.5px] text-faint">Read-only — the site admin maintains these decks</span>}
+      </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[168px] rounded-card" />)}
         {decks.map((d, i) => (
           <DeckCard key={d.id} deck={d} index={i} />
         ))}
-        {!isLoading && decks.length > 0 && (
+        {canEdit && !isLoading && decks.length > 0 && (
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -71,7 +77,13 @@ export function Library() {
           </button>
         )}
       </div>
-      {data && decks.length === 0 && <EmptyState icon={<BookOpen />} title="Your library is empty" description="Create a deck and add a few cards to get started." />}
+      {data && decks.length === 0 && (
+        <EmptyState
+          icon={<BookOpen />}
+          title={canEdit ? 'Your library is empty' : 'Nothing published yet'}
+          description={canEdit ? 'Create a deck and add a few cards to get started.' : 'The site admin has not published any decks yet. Check back soon.'}
+        />
+      )}
       {isError && (
         <EmptyState
           icon={<BookOpen />}

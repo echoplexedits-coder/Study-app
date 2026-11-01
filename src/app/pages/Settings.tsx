@@ -46,6 +46,11 @@ export function Settings() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-medium">{me.user.name ?? 'Signed in'}</p>
             {me.user.email && <p className="truncate text-[13px] text-muted">{me.user.email}</p>}
+            <p className="mt-1.5">
+              <Badge tone={me.capabilities.role === 'admin' ? 'success' : 'neutral'} dot>
+                {me.capabilities.role === 'admin' ? 'Admin — can edit the library' : 'Student — read-only library'}
+              </Badge>
+            </p>
           </div>
           {me.capabilities.auth !== 'development' ? (
             <form method="post" action={me.capabilities.auth === 'google' ? '/auth/google/signout' : '/auth/freebuff/signout'}>
@@ -98,17 +103,21 @@ export function Settings() {
       <section className="mt-8">
         <h2 className="text-[14px] font-semibold">Data</h2>
         <div className="mt-3 divide-y divide-line rounded-card bg-surface shadow-card">
-          <div className="flex items-center gap-3 p-4">
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13.5px] font-medium">Restore sample decks</span>
-              <span className="block text-[12.5px] text-muted">Replaces your library with the three starter decks.</span>
-            </span>
-            <Button onClick={() => setConfirm('reset')}>Restore</Button>
-          </div>
+          {me.capabilities.canEdit && (
+            <div className="flex items-center gap-3 p-4">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13.5px] font-medium">Restore sample decks</span>
+                <span className="block text-[12.5px] text-muted">Replaces your library with the three starter decks.</span>
+              </span>
+              <Button onClick={() => setConfirm('reset')}>Restore</Button>
+            </div>
+          )}
           <div className="flex items-center gap-3 p-4">
             <span className="min-w-0 flex-1">
               <span className="block text-[13.5px] font-medium">Clear library</span>
-              <span className="block text-[12.5px] text-muted">Deletes every deck, card and session. This cannot be undone.</span>
+              <span className="block text-[12.5px] text-muted">
+                {me.capabilities.canEdit ? 'Deletes every deck, card and session. This cannot be undone.' : 'Deletes your study progress and session history. This cannot be undone.'}
+              </span>
             </span>
             <Button variant="danger" onClick={() => setConfirm('clear')}>
               Clear

@@ -22,6 +22,7 @@ export function Deck() {
   const toast = useToast()
   const { data, isLoading, isError } = useDeck(id)
   const { data: me } = useMe()
+  const canEdit = me?.capabilities.canEdit ?? false
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -86,23 +87,25 @@ export function Deck() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={() => setAdding(true)}>
-            <Plus />
-            Add cards
-          </Button>
-          <Menu
-            trigger={
-              <Button size="icon" aria-label="More">
-                <MoreHorizontal />
-              </Button>
-            }
-            items={[
-              { label: 'Edit deck', icon: <Pencil />, onSelect: () => setEditing(true) },
-              { label: 'Delete deck', icon: <Trash2 />, danger: true, onSelect: () => setDeleting(true) },
-            ]}
-          />
-        </div>
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setAdding(true)}>
+              <Plus />
+              Add cards
+            </Button>
+            <Menu
+              trigger={
+                <Button size="icon" aria-label="More">
+                  <MoreHorizontal />
+                </Button>
+              }
+              items={[
+                { label: 'Edit deck', icon: <Pencil />, onSelect: () => setEditing(true) },
+                { label: 'Delete deck', icon: <Trash2 />, danger: true, onSelect: () => setDeleting(true) },
+              ]}
+            />
+          </div>
+        )}
       </header>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -162,7 +165,7 @@ export function Deck() {
             <div className="flex items-center justify-between gap-3 sm:justify-end">
               {/* Row actions stay visible on touch screens, where there is no hover. */}
               <div className="flex items-center gap-0.5 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
-                {me?.capabilities.files && (
+                {canEdit && me?.capabilities.files && (
                   <button
                     type="button"
                     aria-label={card.hasImage || card.fileName ? 'Remove attachment' : 'Attach a file'}
@@ -178,12 +181,16 @@ export function Deck() {
                     <Paperclip className="size-4" />
                   </button>
                 )}
-                <button type="button" aria-label="Edit card" onClick={() => setEditingCard(card)} className="grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg sm:size-8">
-                  <Pencil className="size-4" />
-                </button>
-                <button type="button" aria-label="Delete card" onClick={() => setDeletingCard(card)} className="grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-danger sm:size-8">
-                  <Trash2 className="size-4" />
-                </button>
+                {canEdit && (
+                  <>
+                    <button type="button" aria-label="Edit card" onClick={() => setEditingCard(card)} className="grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg sm:size-8">
+                      <Pencil className="size-4" />
+                    </button>
+                    <button type="button" aria-label="Delete card" onClick={() => setDeletingCard(card)} className="grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-danger sm:size-8">
+                      <Trash2 className="size-4" />
+                    </button>
+                  </>
+                )}
               </div>
               <span className="w-[88px] text-right"><MasteryPill value={card.progress.mastery} /></span>
             </div>

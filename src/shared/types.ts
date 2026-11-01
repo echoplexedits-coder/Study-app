@@ -2,6 +2,8 @@
 
 export const BRAND = 'Recall'
 
+export type Role = 'admin' | 'student'
+
 // A Worker request body is capped at 100 MB by the platform, so the app stays
 // just under it. The body is streamed into R2, never buffered in memory.
 export const MAX_ATTACHMENT_BYTES = 90 * 1024 * 1024
@@ -59,7 +61,7 @@ export interface Me {
   user: { sub: string; name?: string; email?: string; picture?: string }
   streak: number
   seeded: boolean
-  capabilities: { database: boolean; files: boolean; auth: 'freebuff' | 'google' | 'development'; google: boolean }
+  capabilities: { database: boolean; files: boolean; auth: 'freebuff' | 'google' | 'development'; google: boolean; role: Role; canEdit: boolean }
 }
 
 export interface Storage {

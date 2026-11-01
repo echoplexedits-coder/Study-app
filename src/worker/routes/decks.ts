@@ -1,18 +1,28 @@
 import { Hono } from 'hono'
 
 import { privateJson } from '../auth'
-import { CARD_SELECT, DECK_SELECT, hueFor, id, mapCard, mapDeck, mapSession, now } from '../db'
+import { CARD_SELECT, DECK_SELECT, hueFor, id, mapCard, mapDeck, mapSession, now, requireAdmin } from '../db'
 import type { AppContext } from '../env'
 import type { SessionResult, StudyMode } from '../../shared/types'
 import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
 
 export const decks = new Hono<AppContext>()
 
+// The library belongs to the admin. Students may read it and record their own
+// study sessions, which write nothing but their own progress.
+decks.use('*', async (c, next) => {
+  const method = c.req.method
+  if (method === 'GET' || method === 'HEAD') return next()
+  if (method === 'POST' && c.req.path.endsWith('/sessions')) return next()
+  return requireAdmin(c, next)
+})
+
 const MODES = new Set<StudyMode>(['flashcards', 'learn', 'match'])
 const DAY = 86_400_000
 
 decks.get('/', async (c) => {
-  const rows = await c.get('db').prepare(`${DECK_SELECT} WHERE d.owner_sub = ? ORDER BY COALESCE(d.last_studied_at, d.updated_at) DESC`).bind(now(), c.get('user').sub).all()
+  const owner = c.get('user').sub
+  const rows = await c.get('db').prepare(`${DECK_SELECT} WHERE d.owner_sub = ? OR d.shared = 1 ORDER BY COALESCE(d.last_studied_at, d.updated_at) DESC`).bind(owner, owner, owner, now(), owner).all()
   return privateJson(c, { items: (rows.results as Record<string, unknown>[]).map(mapDeck) })
 })
 
@@ -26,7 +36,7 @@ decks.post('/', async (c) => {
   const t = now()
   const statements = [
     db
-      .prepare(`INSERT INTO decks (id, owner_sub, title, description, hue, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .prepare(`INSERT INTO decks (id, owner_sub, title, description, hue, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`)
       .bind(deckId, owner, title, input.description?.trim().slice(0, 300) || null, hueFor(title), t, t),
   ]
   cleanCards(input.cards).forEach((card, i) => {
@@ -35,7 +45,7 @@ decks.post('/', async (c) => {
     )
   })
   for (let i = 0; i < statements.length; i += 40) await db.batch(statements.slice(i, i + 40))
-  const row = await db.prepare(`${DECK_SELECT} WHERE d.owner_sub = ? AND d.id = ?`).bind(t, owner, deckId).first()
+  const row = await db.prepare(`${DECK_SELECT} WHERE d.id = ?`).bind(owner, owner, owner, t, deckId).first()
   return privateJson(c, { deck: mapDeck(row as Record<string, unknown>) }, 201)
 })
 
@@ -44,8 +54,8 @@ decks.get('/:id', async (c) => {
   const owner = c.get('user').sub
   const deckId = c.req.param('id')
   const [deck, cards, sessions] = await db.batch([
-    db.prepare(`${DECK_SELECT} WHERE d.owner_sub = ? AND d.id = ?`).bind(now(), owner, deckId),
-    db.prepare(`${CARD_SELECT} WHERE c.owner_sub = ? AND c.deck_id = ? ORDER BY c.position ASC, c.created_at ASC`).bind(owner, deckId),
+    db.prepare(`${DECK_SELECT} WHERE d.id = ? AND (d.owner_sub = ? OR d.shared = 1)`).bind(owner, owner, owner, now(), deckId, owner),
+    db.prepare(`${CARD_SELECT} WHERE c.deck_id = ? ORDER BY c.position ASC, c.created_at ASC`).bind(owner, deckId),
     db.prepare(`SELECT * FROM sessions WHERE owner_sub = ? AND deck_id = ? ORDER BY created_at DESC LIMIT 10`).bind(owner, deckId),
   ])
   if (!deck.results[0]) return c.json({ error: 'Not found.' }, 404)
@@ -58,28 +68,26 @@ decks.get('/:id', async (c) => {
 
 decks.patch('/:id', async (c) => {
   const db = c.get('db')
-  const owner = c.get('user').sub
   const deckId = c.req.param('id')
   const input = await c.req.json<{ title?: string; description?: string | null }>()
-  const existing = await db.prepare(`SELECT * FROM decks WHERE owner_sub = ? AND id = ?`).bind(owner, deckId).first<Record<string, unknown>>()
+  const existing = await db.prepare(`SELECT * FROM decks WHERE id = ?`).bind(deckId).first<Record<string, unknown>>()
   if (!existing) return c.json({ error: 'Not found.' }, 404)
   const title = (input.title ?? (existing.title as string)).trim().slice(0, 80)
   if (!title) return c.json({ error: 'Give the deck a title.' }, 400)
   const description = input.description === undefined ? (existing.description as string | null) : input.description?.trim().slice(0, 300) || null
-  await db.prepare(`UPDATE decks SET title = ?, description = ?, updated_at = ? WHERE owner_sub = ? AND id = ?`).bind(title, description, now(), owner, deckId).run()
+  await db.prepare(`UPDATE decks SET title = ?, description = ?, updated_at = ? WHERE id = ?`).bind(title, description, now(), deckId).run()
   return privateJson(c, { ok: true })
 })
 
 decks.delete('/:id', async (c) => {
   const db = c.get('db')
-  const owner = c.get('user').sub
   const deckId = c.req.param('id')
-  const keys = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND deck_id = ? AND image_key IS NOT NULL`).bind(owner, deckId).all<{ image_key: string }>()
+  const keys = await db.prepare(`SELECT image_key FROM cards WHERE deck_id = ? AND image_key IS NOT NULL`).bind(deckId).all<{ image_key: string }>()
   await db.batch([
-    db.prepare(`DELETE FROM sessions WHERE owner_sub = ? AND deck_id = ?`).bind(owner, deckId),
-    db.prepare(`DELETE FROM card_progress WHERE owner_sub = ? AND deck_id = ?`).bind(owner, deckId),
-    db.prepare(`DELETE FROM cards WHERE owner_sub = ? AND deck_id = ?`).bind(owner, deckId),
-    db.prepare(`DELETE FROM decks WHERE owner_sub = ? AND id = ?`).bind(owner, deckId),
+    db.prepare(`DELETE FROM sessions WHERE deck_id = ?`).bind(deckId),
+    db.prepare(`DELETE FROM card_progress_v2 WHERE deck_id = ?`).bind(deckId),
+    db.prepare(`DELETE FROM cards WHERE deck_id = ?`).bind(deckId),
+    db.prepare(`DELETE FROM decks WHERE id = ?`).bind(deckId),
   ])
   if (c.env.FILES && keys.results.length) await c.env.FILES.delete(keys.results.map((r) => r.image_key))
   return privateJson(c, { ok: true })
@@ -96,34 +104,32 @@ function cleanCards(input: { term?: string; definition?: string }[] | undefined)
 
 decks.post('/:id/cards', async (c) => {
   const db = c.get('db')
-  const owner = c.get('user').sub
   const deckId = c.req.param('id')
-  const deck = await db.prepare(`SELECT id FROM decks WHERE owner_sub = ? AND id = ?`).bind(owner, deckId).first()
+  const deck = await db.prepare(`SELECT owner_sub FROM decks WHERE id = ?`).bind(deckId).first<{ owner_sub: string }>()
   if (!deck) return c.json({ error: 'Not found.' }, 404)
   const input = await c.req.json<{ cards?: { term: string; definition: string }[] }>()
   const cards = cleanCards(input.cards)
   if (cards.length === 0) return c.json({ error: 'Each card needs a term and a definition.' }, 400)
-  const top = await db.prepare(`SELECT COALESCE(MAX(position), -1) AS p FROM cards WHERE owner_sub = ? AND deck_id = ?`).bind(owner, deckId).first<{ p: number }>()
+  const top = await db.prepare(`SELECT COALESCE(MAX(position), -1) AS p FROM cards WHERE deck_id = ?`).bind(deckId).first<{ p: number }>()
   const t = now()
   const statements = cards.map((card, i) =>
     db
       .prepare(`INSERT INTO cards (id, owner_sub, deck_id, term, definition, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id(), owner, deckId, card.term, card.definition, (top?.p ?? -1) + 1 + i, t + i),
+      .bind(id(), deck.owner_sub, deckId, card.term, card.definition, (top?.p ?? -1) + 1 + i, t + i),
   )
-  statements.push(db.prepare(`UPDATE decks SET updated_at = ? WHERE owner_sub = ? AND id = ?`).bind(t, owner, deckId))
+  statements.push(db.prepare(`UPDATE decks SET updated_at = ? WHERE id = ?`).bind(t, deckId))
   for (let i = 0; i < statements.length; i += 40) await db.batch(statements.slice(i, i + 40))
   return privateJson(c, { added: cards.length }, 201)
 })
 
 decks.patch('/:id/cards/:cardId', async (c) => {
   const db = c.get('db')
-  const owner = c.get('user').sub
   const input = await c.req.json<{ term?: string; definition?: string }>()
   const [card] = cleanCards([{ term: input.term, definition: input.definition }])
   if (!card) return c.json({ error: 'Each card needs a term and a definition.' }, 400)
   const result = await db
-    .prepare(`UPDATE cards SET term = ?, definition = ? WHERE owner_sub = ? AND id = ? AND deck_id = ?`)
-    .bind(card.term, card.definition, owner, c.req.param('cardId'), c.req.param('id'))
+    .prepare(`UPDATE cards SET term = ?, definition = ? WHERE id = ? AND deck_id = ?`)
+    .bind(card.term, card.definition, c.req.param('cardId'), c.req.param('id'))
     .run()
   if (!result.meta.changes) return c.json({ error: 'Not found.' }, 404)
   return privateJson(c, { ok: true })
@@ -131,13 +137,12 @@ decks.patch('/:id/cards/:cardId', async (c) => {
 
 decks.delete('/:id/cards/:cardId', async (c) => {
   const db = c.get('db')
-  const owner = c.get('user').sub
   const cardId = c.req.param('cardId')
-  const existing = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND id = ?`).bind(owner, cardId).first<{ image_key: string | null }>()
+  const existing = await db.prepare(`SELECT image_key FROM cards WHERE id = ? AND deck_id = ?`).bind(cardId, c.req.param('id')).first<{ image_key: string | null }>()
   if (!existing) return c.json({ error: 'Not found.' }, 404)
   await db.batch([
-    db.prepare(`DELETE FROM card_progress WHERE owner_sub = ? AND card_id = ?`).bind(owner, cardId),
-    db.prepare(`DELETE FROM cards WHERE owner_sub = ? AND id = ?`).bind(owner, cardId),
+    db.prepare(`DELETE FROM card_progress_v2 WHERE card_id = ?`).bind(cardId),
+    db.prepare(`DELETE FROM cards WHERE id = ?`).bind(cardId),
   ])
   if (existing.image_key && c.env.FILES) await c.env.FILES.delete(existing.image_key)
   return privateJson(c, { ok: true })
@@ -188,7 +193,7 @@ decks.put('/:id/cards/:cardId/file', async (c) => {
   const db = c.get('db')
   const owner = c.get('user').sub
   const cardId = c.req.param('cardId')
-  const existing = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND id = ? AND deck_id = ?`).bind(owner, cardId, c.req.param('id')).first<{ image_key: string | null }>()
+  const existing = await db.prepare(`SELECT image_key FROM cards WHERE id = ? AND deck_id = ?`).bind(cardId, c.req.param('id')).first<{ image_key: string | null }>()
   if (!existing) return c.json({ error: 'Not found.' }, 404)
 
   const type = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase()
@@ -209,18 +214,17 @@ decks.put('/:id/cards/:cardId/file', async (c) => {
     console.error('attachment upload failed', error)
     return c.json({ error: 'storage_unavailable', message: 'Storage could not accept that file — the space allocated to this site may be full.' }, 507)
   }
-  await db.prepare(`UPDATE cards SET image_key = ?, file_name = ?, file_size = ?, file_type = ? WHERE owner_sub = ? AND id = ?`).bind(key, name, size, type, owner, cardId).run()
+  await db.prepare(`UPDATE cards SET image_key = ?, file_name = ?, file_size = ?, file_type = ? WHERE id = ?`).bind(key, name, size, type, cardId).run()
   if (existing.image_key) await bucket.delete(existing.image_key)
   return privateJson(c, { ok: true, file: { name, size, type } })
 })
 
 decks.delete('/:id/cards/:cardId/file', async (c) => {
   const db = c.get('db')
-  const owner = c.get('user').sub
   const cardId = c.req.param('cardId')
-  const existing = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND id = ? AND deck_id = ?`).bind(owner, cardId, c.req.param('id')).first<{ image_key: string | null }>()
+  const existing = await db.prepare(`SELECT image_key FROM cards WHERE id = ? AND deck_id = ?`).bind(cardId, c.req.param('id')).first<{ image_key: string | null }>()
   if (!existing) return c.json({ error: 'Not found.' }, 404)
-  await db.prepare(`UPDATE cards SET image_key = NULL, file_name = NULL, file_size = NULL, file_type = NULL WHERE owner_sub = ? AND id = ?`).bind(owner, cardId).run()
+  await db.prepare(`UPDATE cards SET image_key = NULL, file_name = NULL, file_size = NULL, file_type = NULL WHERE id = ?`).bind(cardId).run()
   if (existing.image_key && c.env.FILES) await c.env.FILES.delete(existing.image_key)
   return privateJson(c, { ok: true })
 })
@@ -229,7 +233,10 @@ decks.get('/:id/cards/:cardId/file', async (c) => {
   const bucket = c.env.FILES
   if (!bucket) return c.json({ error: 'Not found.' }, 404)
   const owner = c.get('user').sub
-  const card = await c.get('db').prepare(`SELECT image_key, file_name, file_type FROM cards WHERE owner_sub = ? AND id = ? AND deck_id = ?`).bind(owner, c.req.param('cardId'), c.req.param('id')).first<{ image_key: string | null; file_name: string | null; file_type: string | null }>()
+  const card = await c.get('db')
+    .prepare(`SELECT c.image_key, c.file_name, c.file_type FROM cards c JOIN decks d ON d.id = c.deck_id WHERE c.id = ? AND c.deck_id = ? AND (d.owner_sub = ? OR d.shared = 1)`)
+    .bind(c.req.param('cardId'), c.req.param('id'), owner)
+    .first<{ image_key: string | null; file_name: string | null; file_type: string | null }>()
   if (!card?.image_key) return c.json({ error: 'Not found.' }, 404)
   const object = await bucket.get(card.image_key)
   if (!object) return c.json({ error: 'Not found.' }, 404)
@@ -260,12 +267,11 @@ decks.post('/:id/sessions', async (c) => {
   if (!input.mode || !MODES.has(input.mode)) return c.json({ error: 'Unknown study mode.' }, 400)
   const results = (input.results ?? []).filter((r) => typeof r.cardId === 'string' && typeof r.correct === 'boolean').slice(0, 500)
   if (results.length === 0) return c.json({ error: 'Nothing to record.' }, 400)
-  const deck = await db.prepare(`SELECT id FROM decks WHERE owner_sub = ? AND id = ?`).bind(owner, deckId).first()
+  const deck = await db.prepare(`SELECT id FROM decks WHERE id = ? AND (owner_sub = ? OR shared = 1)`).bind(deckId, owner).first()
   if (!deck) return c.json({ error: 'Not found.' }, 404)
-
   const ids = [...new Set(results.map((r) => r.cardId))]
   const owned = await db
-    .prepare(`SELECT c.id, p.correct, p.incorrect, p.streak, p.mastery FROM cards c LEFT JOIN card_progress p ON p.card_id = c.id WHERE c.owner_sub = ? AND c.deck_id = ? AND c.id IN (${ids.map(() => '?').join(',')})`)
+    .prepare(`SELECT c.id, p.correct, p.incorrect, p.streak, p.mastery FROM cards c LEFT JOIN card_progress_v2 p ON p.card_id = c.id AND p.owner_sub = ? WHERE c.deck_id = ? AND c.id IN (${ids.map(() => '?').join(',')})`)
     .bind(owner, deckId, ...ids)
     .all<{ id: string; correct: number | null; incorrect: number | null; streak: number | null; mastery: number | null }>()
   const byId = new Map(owned.results.map((r) => [r.id, r]))
@@ -286,10 +292,10 @@ decks.post('/:id/sessions', async (c) => {
     statements.push(
       db
         .prepare(
-          `INSERT INTO card_progress (card_id, owner_sub, deck_id, correct, incorrect, streak, mastery, next_due, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(card_id) DO UPDATE SET correct = excluded.correct, incorrect = excluded.incorrect, streak = excluded.streak, mastery = excluded.mastery, next_due = excluded.next_due, last_seen = excluded.last_seen`,
+          `INSERT INTO card_progress_v2 (owner_sub, card_id, deck_id, correct, incorrect, streak, mastery, next_due, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(owner_sub, card_id) DO UPDATE SET correct = excluded.correct, incorrect = excluded.incorrect, streak = excluded.streak, mastery = excluded.mastery, next_due = excluded.next_due, last_seen = excluded.last_seen`,
         )
-        .bind(r.cardId, owner, deckId, correct, incorrect, streak, mastery, t + interval, t),
+        .bind(owner, r.cardId, deckId, correct, incorrect, streak, mastery, t + interval, t),
     )
     byId.set(r.cardId, { id: r.cardId, correct, incorrect, streak, mastery })
   }

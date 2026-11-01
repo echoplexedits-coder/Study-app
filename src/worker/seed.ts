@@ -90,8 +90,8 @@ export async function seedUser(db: D1Database, owner: string) {
         const mastery = Math.min(100, Math.round(strength * 100))
         statements.push(
           db
-            .prepare(`INSERT INTO card_progress (card_id, owner_sub, deck_id, correct, incorrect, streak, mastery, next_due, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .bind(cardId, owner, deckId, correct, incorrect, Math.min(correct, 4), mastery, t + (mastery >= 80 ? 3 : mastery >= 40 ? 1 : 0) * DAY, lastStudied),
+            .prepare(`INSERT INTO card_progress_v2 (owner_sub, card_id, deck_id, correct, incorrect, streak, mastery, next_due, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .bind(owner, cardId, deckId, correct, incorrect, Math.min(correct, 4), mastery, t + (mastery >= 80 ? 3 : mastery >= 40 ? 1 : 0) * DAY, lastStudied),
         )
       }
     })
@@ -114,6 +114,6 @@ export async function seedUser(db: D1Database, owner: string) {
 }
 
 export async function clearUser(db: D1Database, owner: string) {
-  await db.batch(['sessions', 'card_progress', 'cards', 'decks'].map((table) => db.prepare(`DELETE FROM ${table} WHERE owner_sub = ?`).bind(owner)))
+  await db.batch(['sessions', 'card_progress_v2', 'cards', 'decks'].map((table) => db.prepare(`DELETE FROM ${table} WHERE owner_sub = ?`).bind(owner)))
   await db.prepare(`UPDATE users SET seeded_at = NULL WHERE owner_sub = ?`).bind(owner).run()
 }
