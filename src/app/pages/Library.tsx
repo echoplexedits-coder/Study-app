@@ -3,13 +3,13 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { DeckCard } from '../components/DeckCard'
-import { Button, Dialog, EmptyState, Field, Input, Skeleton, Textarea, useFieldId, useToast } from '../components/ui'
+import { Button, Dialog, EmptyState, Field, FieldInput, FieldTextarea, Skeleton, useToast } from '../components/ui'
 import { api, useApiMutation, useDecks, useMe } from '../lib/api'
 import type { Deck } from '../../shared/types'
 
 export function Library() {
   const { data: me } = useMe()
-  const { data, isLoading } = useDecks()
+  const { data, isLoading, isError } = useDecks()
   const [creating, setCreating] = useState(false)
   const decks = data?.items ?? []
   const due = decks.reduce((n, d) => n + d.dueCount, 0)
@@ -21,7 +21,7 @@ export function Library() {
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[26px] font-bold tracking-[-0.02em]">
+          <h1 className="text-[23px] font-bold tracking-[-0.02em] sm:text-[26px]">
             {hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'}
             {first ? `, ${first}` : ''}
           </h1>
@@ -60,7 +60,7 @@ export function Library() {
         {decks.map((d, i) => (
           <DeckCard key={d.id} deck={d} index={i} />
         ))}
-        {!isLoading && (
+        {!isLoading && decks.length > 0 && (
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -72,19 +72,18 @@ export function Library() {
         )}
       </div>
       {data && decks.length === 0 && <EmptyState icon={<BookOpen />} title="Your library is empty" description="Create a deck and add a few cards to get started." />}
+      {isError && (
+        <EmptyState
+          icon={<BookOpen />}
+          title="Couldn't load your decks"
+          description="Check your connection and try again."
+          action={<Button onClick={() => window.location.reload()}>Reload</Button>}
+        />
+      )}
 
       <NewDeckDialog open={creating} onClose={() => setCreating(false)} />
     </div>
   )
-}
-
-function FieldInput(props: React.ComponentPropsWithoutRef<typeof Input>) {
-  const id = useFieldId()
-  return <Input id={id} {...props} />
-}
-function FieldTextarea(props: React.ComponentPropsWithoutRef<typeof Textarea>) {
-  const id = useFieldId()
-  return <Textarea id={id} {...props} />
 }
 
 export function parseCards(text: string) {

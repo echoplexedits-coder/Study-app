@@ -26,7 +26,7 @@ function buildTiles(cards: Card[]): Tile[] {
 export function Match() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, isLoading } = useDeck(id)
+  const { data, isLoading, isError } = useDeck(id)
   const [round, setRound] = useState(0)
   const tiles = useMemo(() => (data ? buildTiles(data.cards) : []), [data, round])
   const [selected, setSelected] = useState<string | null>(null)
@@ -60,6 +60,10 @@ export function Match() {
       }, 500)
     }
   }
+
+  useEffect(() => {
+    if (isError) navigate('/')
+  }, [isError, navigate])
 
   function restart() {
     setRound((r) => r + 1)
@@ -101,7 +105,10 @@ export function Match() {
       ) : (
         <div className="flex flex-1 flex-col">
           <p className="text-center text-[14px] text-muted">Tap a term, then its definition</p>
-          <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-4">
+          <p className="sr-only" aria-live="polite">
+            {matched.size / 2} of {tiles.length / 2} pairs matched
+          </p>
+          <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3">
             <AnimatePresence>
               {tiles.map((tile) => {
                 const isMatched = matched.has(tile.key)

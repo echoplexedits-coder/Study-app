@@ -11,18 +11,18 @@
   --color-line: #e6e6ee;
   --color-line-strong: #d4d4e0;
   --color-fg: #15141f;
-  --color-muted: #676577;
-  --color-faint: #9b99ab;
+  --color-muted: #5b596c;
+  --color-faint: #6f6d80;
   --color-accent: #5b4df0;
   --color-accent-soft: #ecebfd;
   --color-accent-deep: #4a3ddb;
-  --color-success: #1f9d6b;
+  --color-success: #137a50;
   --color-success-soft: #e4f6ed;
-  --color-warning: #c7811a;
+  --color-warning: #8f5f0c;
   --color-warning-soft: #fdf2e0;
-  --color-danger: #d9483a;
+  --color-danger: #b23a2c;
   --color-danger-soft: #fdebe9;
-  --color-info: #2f77d1;
+  --color-info: #2563bd;
   --color-info-soft: #e8f1fd;
 
   --radius-control: 14px;
@@ -52,6 +52,9 @@
     background: var(--color-bg);
     color-scheme: light;
     overscroll-behavior-y: none;
+    /* Stops iOS from inflating text in landscape. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     background: var(--color-bg);

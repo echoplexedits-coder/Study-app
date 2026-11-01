@@ -3,7 +3,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { ProgressRing } from '../components/DeckCard'
-import { Button, ConfirmDialog, Dialog, Field, Input, Menu, Spinner, Textarea, useFieldId, useToast } from '../components/ui'
+import { Button, ConfirmDialog, Dialog, Field, FieldInput, FieldTextarea, Input, Menu, Spinner, useToast } from '../components/ui'
 import { api, uploadCardImage, useApiMutation, useDeck, useMe } from '../lib/api'
 import { cx } from '../lib/cx'
 import { relativeTime } from '../lib/format'
@@ -20,12 +20,13 @@ export function Deck() {
   const { id } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
-  const { data, isLoading } = useDeck(id)
+  const { data, isLoading, isError } = useDeck(id)
   const { data: me } = useMe()
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [editingCard, setEditingCard] = useState<Card | null>(null)
+  const [deletingCard, setDeletingCard] = useState<Card | null>(null)
 
   const remove = useApiMutation(() => api(`/decks/${id}`, { method: 'DELETE' }), ['decks', 'stats', 'me'], { onSuccess: () => navigate('/') })
   const removeCard = useApiMutation((cardId: string) => api(`/decks/${id}/cards/${cardId}`, { method: 'DELETE' }), ['deck', 'decks'])
@@ -34,10 +35,24 @@ export function Deck() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [imageTarget, setImageTarget] = useState<string | null>(null)
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <div className="grid min-h-[50vh] place-items-center">
         <Spinner />
+      </div>
+    )
+  }
+  // A missing deck (deleted, or another account's link) must not spin forever.
+  if (isError || !data) {
+    return (
+      <div className="grid min-h-[50vh] place-items-center text-center">
+        <div>
+          <p className="text-[15px] font-medium">This deck is not available</p>
+          <p className="mt-1 text-[13.5px] text-muted">It may have been deleted, or it belongs to another account.</p>
+          <Link to="/" className="mt-5 inline-flex h-9 items-center rounded-control bg-surface px-4 text-[13.5px] font-medium shadow-card hover:bg-surface-2">
+            Back to library
+          </Link>
+        </div>
       </div>
     )
   }
@@ -58,7 +73,7 @@ export function Deck() {
             <span className="absolute text-[13px] font-bold tabular-nums">{deck.mastery}%</span>
           </div>
           <div>
-            <h1 className="text-[28px] font-bold tracking-[-0.02em]">{deck.title}</h1>
+            <h1 className="text-[24px] font-bold tracking-[-0.02em] sm:text-[28px]">{deck.title}</h1>
             {deck.description && <p className="mt-1 max-w-xl text-[14.5px] text-muted">{deck.description}</p>}
             <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-faint">
               <span>{deck.cardCount} cards</span>
@@ -89,7 +104,8 @@ export function Deck() {
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
         {modes.map(({ key, label, detail, icon: Icon }) => {
-          const disabled = cards.length < (key === 'match' ? 3 : key === 'learn' ? 4 : 1)
+          const needed = key === 'match' ? 3 : key === 'learn' ? 4 : 1
+          const disabled = cards.length < needed
           return (
             <button
               key={key}
@@ -103,7 +119,7 @@ export function Deck() {
               </span>
               <span>
                 <span className="block text-[15px] font-semibold">{label}</span>
-                <span className="block text-[12.5px] text-muted">{disabled ? `Needs at least ${key === 'match' ? 3 : 4} cards` : detail}</span>
+                <span className="block text-[12.5px] text-muted">{disabled ? `Needs at least ${needed} ${needed === 1 ? 'card' : 'cards'}` : detail}</span>
               </span>
             </button>
           )
@@ -120,17 +136,18 @@ export function Deck() {
       </div>
       <ul className="mt-3 flex flex-col gap-2">
         {cards.map((card, i) => (
-          <li key={card.id} className="group grid grid-cols-[1fr_1fr_auto] items-center gap-4 rounded-card bg-surface px-5 py-3.5 shadow-card">
+          <li key={card.id} className="group grid grid-cols-1 items-center gap-2 rounded-card bg-surface px-4 py-3.5 shadow-card sm:grid-cols-[1fr_1fr_auto] sm:gap-4 sm:px-5">
             <div className="flex items-start gap-4">
               <span className="w-6 shrink-0 pt-0.5 text-[12px] tabular-nums text-faint">{i + 1}</span>
               <div className="min-w-0">
                 <p className="text-[15px] font-medium leading-snug">{card.term}</p>
-                {card.hasImage && <img src={`/api/decks/${deck.id}/cards/${card.id}/image`} alt="" className="mt-2 h-20 w-28 rounded-[12px] object-cover" />}
+                {card.hasImage && <img src={`/api/decks/${deck.id}/cards/${card.id}/image`} alt="" loading="lazy" decoding="async" className="mt-2 h-20 w-28 rounded-[12px] object-cover" />}
               </div>
             </div>
-            <p className="border-l border-line pl-4 text-[14.5px] leading-snug text-muted">{card.definition}</p>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <p className="text-[14.5px] leading-snug text-muted sm:border-l sm:border-line sm:pl-4">{card.definition}</p>
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              {/* Row actions stay visible on touch screens, where there is no hover. */}
+              <div className="flex items-center gap-0.5 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
                 {me?.capabilities.files && (
                   <button
                     type="button"
@@ -142,15 +159,15 @@ export function Deck() {
                         fileInput.current?.click()
                       }
                     }}
-                    className={cx('grid size-8 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg', card.hasImage && 'text-accent')}
+                    className={cx('grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg sm:size-8', card.hasImage && 'text-accent')}
                   >
                     <ImageIcon className="size-4" />
                   </button>
                 )}
-                <button type="button" aria-label="Edit card" onClick={() => setEditingCard(card)} className="grid size-8 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg">
+                <button type="button" aria-label="Edit card" onClick={() => setEditingCard(card)} className="grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg sm:size-8">
                   <Pencil className="size-4" />
                 </button>
-                <button type="button" aria-label="Delete card" onClick={() => removeCard.mutate(card.id)} className="grid size-8 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-danger">
+                <button type="button" aria-label="Delete card" onClick={() => setDeletingCard(card)} className="grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-danger sm:size-8">
                   <Trash2 className="size-4" />
                 </button>
               </div>
@@ -184,6 +201,17 @@ export function Deck() {
       <EditDeckDialog open={editing} onClose={() => setEditing(false)} deckId={deck.id} title={deck.title} description={deck.description ?? ''} />
       <EditCardDialog card={editingCard} deckId={deck.id} onClose={() => setEditingCard(null)} />
       <ConfirmDialog
+        open={Boolean(deletingCard)}
+        onClose={() => setDeletingCard(null)}
+        onConfirm={() => {
+          if (deletingCard) removeCard.mutate(deletingCard.id)
+          setDeletingCard(null)
+        }}
+        loading={removeCard.isPending}
+        title="Delete this card?"
+        description={deletingCard ? `“${deletingCard.term}” and its progress are removed.` : ''}
+      />
+      <ConfirmDialog
         open={deleting}
         onClose={() => setDeleting(false)}
         onConfirm={() => remove.mutate(undefined)}
@@ -199,15 +227,6 @@ export function MasteryPill({ value }: { value: number }) {
   const tone = value >= 80 ? 'bg-success-soft text-success' : value >= 40 ? 'bg-warning-soft text-warning' : value > 0 ? 'bg-danger-soft text-danger' : 'bg-surface-2 text-faint'
   const label = value >= 80 ? 'Mastered' : value >= 40 ? 'Learning' : value > 0 ? 'Weak' : 'New'
   return <span className={cx('inline-flex h-6 items-center gap-1 rounded-[8px] px-2 text-[12px] font-medium', tone)}>{value >= 80 && <Check className="size-3" />}{label}</span>
-}
-
-function FieldInput(props: React.ComponentPropsWithoutRef<typeof Input>) {
-  const id = useFieldId()
-  return <Input id={id} {...props} />
-}
-function FieldTextarea(props: React.ComponentPropsWithoutRef<typeof Textarea>) {
-  const id = useFieldId()
-  return <Textarea id={id} {...props} />
 }
 
 function AddCardsDialog({ open, onClose, deckId }: { open: boolean; onClose: () => void; deckId: string }) {
@@ -254,12 +273,18 @@ function AddCardsDialog({ open, onClose, deckId }: { open: boolean; onClose: () 
         {tab === 'one' ? (
           <div className="flex flex-col gap-2">
             {rows.map((row, i) => (
-              <div key={i} className="grid grid-cols-[1fr_1fr_36px] gap-2">
-                <Input placeholder="Term" value={row.term} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, term: e.target.value } : r)))} />
-                <Input placeholder="Definition" value={row.definition} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, definition: e.target.value } : r)))} />
-                <Button size="icon" variant="ghost" aria-label="Remove row" disabled={rows.length === 1} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+              <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <Input aria-label="Term" placeholder="Term" value={row.term} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, term: e.target.value } : r)))} />
+                <Button size="icon" variant="ghost" className="sm:order-3" aria-label="Remove row" disabled={rows.length === 1} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
                   <X />
                 </Button>
+                <Input
+                  aria-label="Definition"
+                  placeholder="Definition"
+                  className="col-span-2 sm:order-2 sm:col-span-1"
+                  value={row.definition}
+                  onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, definition: e.target.value } : r)))}
+                />
               </div>
             ))}
             <Button variant="ghost" className="self-start" onClick={() => setRows([...rows, { term: '', definition: '' }])}>

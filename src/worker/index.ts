@@ -27,6 +27,8 @@ api.route('/decks', decks)
 app.route('/api', api)
 
 app.onError((error, c) => {
+  // A malformed JSON body is the client's mistake, not a server failure.
+  if (error instanceof SyntaxError) return c.json({ error: 'Invalid JSON body.' }, 400)
   console.error(error)
   return c.json({ error: 'Something went wrong.' }, 500)
 })

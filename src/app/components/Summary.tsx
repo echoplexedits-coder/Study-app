@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { recordSession, useInvalidate } from '../lib/api'
@@ -26,10 +26,14 @@ export function Summary({
   const invalidate = useInvalidate()
   const [saved, setSaved] = useState<{ accuracy: number } | null>(null)
   const [error, setError] = useState('')
+  const recorded = useRef(false)
   const correct = results.filter((r) => r.correct).length
   const accuracy = results.length ? Math.round((correct / results.length) * 100) : 0
 
   useEffect(() => {
+    // Guard against React's development double-mount recording a session twice.
+    if (recorded.current) return
+    recorded.current = true
     let cancelled = false
     recordSession(deckId, mode, results, Date.now() - startedAt)
       .then((r) => {

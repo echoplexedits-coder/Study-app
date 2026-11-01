@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Check, RotateCcw, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { StudyFrame } from '../components/Shell'
@@ -13,7 +13,7 @@ import type { Card, SessionResult } from '../../shared/types'
 export function Flashcards() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, isLoading } = useDeck(id)
+  const { data, isLoading, isError } = useDeck(id)
   const [round, setRound] = useState(0)
   const order = useMemo(() => (data ? shuffle(data.cards) : []), [data, round])
   const [index, setIndex] = useState(0)
@@ -21,6 +21,7 @@ export function Flashcards() {
   const [results, setResults] = useState<SessionResult[]>([])
   const [direction, setDirection] = useState<1 | -1>(1)
   const [startedAt, setStartedAt] = useState(Date.now())
+  const advance = useRef<number | undefined>(undefined)
 
   const card: Card | undefined = order[index]
   const done = Boolean(data) && index >= order.length
@@ -30,8 +31,14 @@ export function Flashcards() {
     setDirection(correct ? 1 : -1)
     setResults((r) => [...r, { cardId: card.id, correct }])
     setFlipped(false)
-    window.setTimeout(() => setIndex((i) => i + 1), 40)
+    window.clearTimeout(advance.current)
+    advance.current = window.setTimeout(() => setIndex((i) => i + 1), 40)
   }
+
+  // A deleted or foreign deck sends you back instead of spinning forever.
+  useEffect(() => {
+    if (isError) navigate('/')
+  }, [isError, navigate])
 
   function restart() {
     setRound((r) => r + 1)
@@ -41,16 +48,23 @@ export function Flashcards() {
     setStartedAt(Date.now())
   }
 
+  // A single listener that reads the latest state through a ref, rather than
+  // tearing down and re-adding a listener on every render.
+  const keys = useRef({ done, answer, flip: () => setFlipped((f) => !f) })
+  keys.current = { done, answer, flip: () => setFlipped((f) => !f) }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (done) return
-      if (e.key === ' ' || e.key === 'Enter') (e.preventDefault(), setFlipped((f) => !f))
-      if (e.key === 'ArrowRight') answer(true)
-      if (e.key === 'ArrowLeft') answer(false)
+      if (keys.current.done) return
+      if (e.key === ' ' || e.key === 'Enter') (e.preventDefault(), keys.current.flip())
+      if (e.key === 'ArrowRight') keys.current.answer(true)
+      if (e.key === 'ArrowLeft') keys.current.answer(false)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.clearTimeout(advance.current)
+    }
+  }, [])
 
   if (isLoading || !data) {
     return (
@@ -78,7 +92,7 @@ export function Flashcards() {
             <span className="inline-flex h-7 items-center rounded-[9px] bg-success-soft px-2.5 tabular-nums text-success">{known} known</span>
           </div>
 
-          <div className="relative mt-5 flex-1 [perspective:1600px]" style={{ minHeight: 360 }}>
+          <div className="relative mt-5 min-h-[300px] flex-1 [perspective:1600px] sm:min-h-[360px]">
             <AnimatePresence initial={false} custom={direction} mode="popLayout">
               {card && (
                 <motion.button
@@ -96,7 +110,7 @@ export function Flashcards() {
                 >
                   <motion.div animate={{ rotateY: flipped ? 180 : 0 }} transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }} className="preserve-3d relative size-full">
                     <Face label="Term" className="bg-surface">
-                      {card.hasImage && <img src={`/api/decks/${data.deck.id}/cards/${card.id}/image`} alt="" className="mb-6 max-h-[180px] rounded-[16px] object-cover" />}
+                      {card.hasImage && <img src={`/api/decks/${data.deck.id}/cards/${card.id}/image`} alt="" loading="lazy" decoding="async" className="mb-6 max-h-[180px] rounded-[16px] object-cover" />}
                       <p className="text-balance text-center text-[32px] font-bold tracking-tight sm:text-[40px]">{card.term}</p>
                     </Face>
                     <Face label="Definition" className="bg-fg text-white [transform:rotateY(180deg)]">

@@ -14,7 +14,7 @@ export function SignIn() {
       </header>
       <main className="mx-auto grid w-full max-w-[1120px] flex-1 items-center gap-12 px-5 pb-16 sm:px-8 lg:grid-cols-2">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} className="max-w-md">
-          <h1 className="text-balance text-[40px] font-bold leading-[1.05] tracking-[-0.03em] sm:text-[52px]">Remember what you learn</h1>
+          <h1 className="text-balance text-[34px] font-bold leading-[1.06] tracking-[-0.03em] sm:text-[52px]">Remember what you learn</h1>
           <p className="mt-4 text-[16px] leading-relaxed text-muted">Flashcards, quizzes and matching games that schedule themselves around what you forget. Sign in to open your library.</p>
           <div className="mt-8 flex flex-col items-start gap-3">
             {google && (

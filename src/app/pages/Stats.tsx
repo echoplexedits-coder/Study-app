@@ -2,13 +2,27 @@ import { motion } from 'motion/react'
 import { Flame } from 'lucide-react'
 import { Link } from 'react-router'
 
-import { Card, Skeleton } from '../components/ui'
+import { Button, Card, Skeleton } from '../components/ui'
 import { useStats } from '../lib/api'
 import { cx } from '../lib/cx'
 import { relativeTime } from '../lib/format'
 
 export function StatsPage() {
-  const { data, isLoading } = useStats()
+  const { data, isLoading, isError } = useStats()
+
+  if (isError) {
+    return (
+      <div className="grid min-h-[50vh] place-items-center text-center">
+        <div>
+          <p className="text-[15px] font-medium">Couldn't load your progress</p>
+          <p className="mt-1 text-[13.5px] text-muted">Check your connection and try again.</p>
+          <Button variant="primary" className="mt-5" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading || !data) {
     return (
@@ -27,7 +41,7 @@ export function StatsPage() {
     { label: 'Time studied', value: `${data.minutes}`, unit: 'minutes' },
   ]
 
-  const weeks: typeof data.days[] = []
+  const weeks: (typeof data.days)[] = []
   for (let i = 0; i < data.days.length; i += 7) weeks.push(data.days.slice(i, i + 7))
   const maxSessions = Math.max(1, ...data.days.map((d) => d.sessions))
   const accuracyDays = data.days.slice(-28)
@@ -57,7 +71,12 @@ export function StatsPage() {
             <h2 className="text-[14px] font-semibold">Activity</h2>
             <span className="text-[12.5px] text-faint">Last 12 weeks</span>
           </div>
-          <div className="mt-4 grid grid-flow-col grid-rows-7 gap-1.5" style={{ gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))` }}>
+          <div
+            role="img"
+            aria-label="Study activity for the last 12 weeks"
+            className="mt-4 grid grid-flow-col grid-rows-7 gap-1.5"
+            style={{ gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))` }}
+          >
             {weeks.map((week, wi) =>
               week.map((day, di) => (
                 <motion.span
@@ -79,7 +98,7 @@ export function StatsPage() {
             <h2 className="text-[14px] font-semibold">Accuracy</h2>
             <span className="text-[12.5px] text-faint">Last 4 weeks</span>
           </div>
-          <div className="mt-4 flex h-[128px] items-end gap-1">
+          <div role="img" aria-label="Accuracy by day for the last 4 weeks" className="mt-4 flex h-[128px] items-end gap-1">
             {accuracyDays.map((d) => (
               <div key={d.date} className="flex h-full flex-1 flex-col justify-end" title={d.accuracy === null ? d.date : `${d.date}: ${d.accuracy}%`}>
                 <motion.div
@@ -109,6 +128,7 @@ export function StatsPage() {
                 </Link>
               </li>
             ))}
+            {data.decks.length === 0 && <li className="text-[13px] text-muted">No decks yet</li>}
           </ul>
         </Card>
         <Card className="p-5">

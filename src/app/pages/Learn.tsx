@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Check, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { StudyFrame } from '../components/Shell'
@@ -34,13 +34,14 @@ function buildRound(cards: Card[]): Question[] {
 export function Learn() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { data, isLoading } = useDeck(id)
+  const { data, isLoading, isError } = useDeck(id)
   const [round, setRound] = useState(0)
   const questions = useMemo(() => (data ? buildRound(data.cards) : []), [data, round])
   const [index, setIndex] = useState(0)
   const [picked, setPicked] = useState<number | null>(null)
   const [results, setResults] = useState<SessionResult[]>([])
   const [startedAt, setStartedAt] = useState(Date.now())
+  const advance = useRef<number | undefined>(undefined)
 
   const question = questions[index]
   const done = Boolean(data) && index >= questions.length
@@ -50,7 +51,8 @@ export function Learn() {
     setPicked(option)
     const correct = option === question.answer
     setResults((r) => [...r, { cardId: question.card.id, correct }])
-    window.setTimeout(
+    window.clearTimeout(advance.current)
+    advance.current = window.setTimeout(
       () => {
         setPicked(null)
         setIndex((i) => i + 1)
@@ -58,6 +60,10 @@ export function Learn() {
       correct ? 700 : 1400,
     )
   }
+
+  useEffect(() => {
+    if (isError) navigate('/')
+  }, [isError, navigate])
 
   function restart() {
     setRound((r) => r + 1)
@@ -67,14 +73,21 @@ export function Learn() {
     setStartedAt(Date.now())
   }
 
+  // One listener for the whole round; the ref keeps it pointed at fresh state
+  // instead of re-subscribing on every render.
+  const pickRef = useRef(pick)
+  pickRef.current = pick
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const n = Number(e.key)
-      if (n >= 1 && n <= 4) pick(n - 1)
+      if (n >= 1 && n <= 4) pickRef.current(n - 1)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.clearTimeout(advance.current)
+    }
+  }, [])
 
   if (isLoading || !data) {
     return (

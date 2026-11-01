@@ -217,11 +217,9 @@ decks.post('/:id/sessions', async (c) => {
   const t = now()
   const statements: D1PreparedStatement[] = []
   let score = 0
-  const seen = new Set<string>()
   for (const r of results) {
     const row = byId.get(r.cardId)
     if (!row) continue
-    seen.add(r.cardId)
     if (r.correct) score++
     const correct = Number(row.correct ?? 0) + (r.correct ? 1 : 0)
     const incorrect = Number(row.incorrect ?? 0) + (r.correct ? 0 : 1)

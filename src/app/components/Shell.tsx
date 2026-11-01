@@ -23,6 +23,12 @@ export function Shell() {
   const link = 'inline-flex h-9 items-center rounded-control px-3.5 text-[14px] font-medium transition-colors'
   return (
     <div className="min-h-screen">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-control focus:bg-surface focus:px-4 focus:py-2 focus:text-[14px] focus:font-medium focus:shadow-pop"
+      >
+        Skip to content
+      </a>
       <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between px-5 sm:px-8">
           <div className="flex items-center gap-8">
@@ -43,13 +49,14 @@ export function Shell() {
                 {me.streak}
               </Link>
             )}
-            <NavLink to="/settings" className="grid size-9 place-items-center rounded-full">
+            <NavLink to="/settings" aria-label="Settings" className="grid size-9 place-items-center rounded-full">
               {me && <Avatar name={me.user.name ?? me.user.email ?? 'You'} hue={250} src={me.user.picture} size={32} />}
             </NavLink>
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1120px] px-5 py-8 sm:px-8 sm:py-10">
+      {/* Bottom padding clears the fixed mobile tab bar so content never hides behind it. */}
+      <main id="main" className="mx-auto max-w-[1120px] px-5 pb-28 pt-8 sm:px-8 sm:pb-10 sm:pt-10">
         <Outlet />
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-2 border-t border-line bg-bg/90 p-2 backdrop-blur-xl sm:hidden">

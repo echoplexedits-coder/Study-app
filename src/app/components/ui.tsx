@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronDown, Loader2, X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import {
   createContext,
   useCallback,
@@ -27,7 +27,7 @@ const buttonVariants: Record<ButtonVariant, string> = {
   primary: 'bg-accent text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.15)] hover:bg-accent-deep',
   secondary: 'border border-line-strong bg-surface text-fg shadow-[0_1px_1px_rgb(20_20_24/0.04)] hover:bg-surface-2',
   ghost: 'text-muted hover:bg-surface-2 hover:text-fg',
-  danger: 'bg-danger text-white hover:bg-[#bf3b26]',
+  danger: 'bg-danger text-white hover:bg-[#95301f]',
 }
 const buttonSizes: Record<ButtonSize, string> = {
   md: 'h-9 px-3.5 text-[13.5px]',
@@ -45,7 +45,7 @@ export function Button({
   ...rest
 }: ComponentPropsWithoutRef<'button'> & { variant?: ButtonVariant; size?: ButtonSize; loading?: boolean }) {
   return (
-    <button type="button" className={cx(buttonBase, buttonVariants[variant], buttonSizes[size], className)} disabled={loading || rest.disabled} {...rest}>
+    <button type="button" className={cx(buttonBase, buttonVariants[variant], buttonSizes[size], className)} disabled={loading || rest.disabled} aria-busy={loading || undefined} {...rest}>
       {loading ? <Loader2 className="animate-spin" /> : children}
     </button>
   )
@@ -62,32 +62,6 @@ export function Textarea({ className, ...rest }: ComponentPropsWithoutRef<'texta
   return <textarea className={cx(inputClass, 'h-auto min-h-[88px] resize-y py-2 leading-relaxed', className)} {...rest} />
 }
 
-export function Select({ className, children, ...rest }: ComponentPropsWithoutRef<'select'>) {
-  return (
-    <span className={cx('relative block', className)}>
-      <select className={cx(inputClass, 'appearance-none pr-9')} {...rest}>
-        {children}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
-    </span>
-  )
-}
-
-export function Checkbox({ className, ...rest }: ComponentPropsWithoutRef<'input'>) {
-  return (
-    <span className={cx('relative inline-grid size-4.5 shrink-0 place-items-center', className)}>
-      <input
-        type="checkbox"
-        className="peer absolute inset-0 size-full cursor-pointer appearance-none rounded-[6px] border border-line-strong bg-surface transition-colors checked:border-fg checked:bg-fg disabled:cursor-default"
-        {...rest}
-      />
-      <svg viewBox="0 0 16 16" className="pointer-events-none relative size-3 opacity-0 transition-opacity peer-checked:opacity-100" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M3.5 8.5l2.8 2.8L12.5 5" />
-      </svg>
-    </span>
-  )
-}
-
 export function Field({ label, children, hint, className }: { label: string; children: ReactNode; hint?: string; className?: string }) {
   const id = useId()
   return (
@@ -99,7 +73,18 @@ export function Field({ label, children, hint, className }: { label: string; chi
   )
 }
 const FieldIdContext = createContext<string | undefined>(undefined)
-export const useFieldId = () => useContext(FieldIdContext)
+const useFieldId = () => useContext(FieldIdContext)
+
+/** An Input or Textarea that takes its id from the surrounding <Field> label. */
+export function FieldInput({ id, ...rest }: ComponentPropsWithoutRef<'input'>) {
+  const fieldId = useFieldId()
+  return <Input id={id ?? fieldId} {...rest} />
+}
+
+export function FieldTextarea({ id, ...rest }: ComponentPropsWithoutRef<'textarea'>) {
+  const fieldId = useFieldId()
+  return <Textarea id={id ?? fieldId} {...rest} />
+}
 
 type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'info'
 const toneClasses: Record<Tone, string> = {
@@ -149,25 +134,6 @@ export function Avatar({
   )
 }
 
-export function CompanyMark({ name, hue, size = 32, className }: { name: string; hue: number; size?: number; className?: string }) {
-  return (
-    <span
-      className={cx('grid shrink-0 place-items-center rounded-tile font-semibold', className)}
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.max(10, Math.round(size * 0.4)),
-        background: `hsl(${hue} 55% 94%)`,
-        color: `hsl(${hue} 50% 38%)`,
-        borderRadius: Math.round(size * 0.32),
-      }}
-      aria-hidden
-    >
-      {name.trim()[0]?.toUpperCase() ?? '?'}
-    </span>
-  )
-}
-
 export function Spinner({ className }: { className?: string }) {
   return <Loader2 className={cx('size-5 animate-spin text-faint', className)} />
 }
@@ -195,23 +161,36 @@ export function Card({ className, children, ...rest }: ComponentPropsWithoutRef<
   )
 }
 
-// Dialog and Drawer share the overlay: Escape or backdrop closes, scroll is
-// locked while open, focus moves to the first field.
+// Dialog overlay: Escape or backdrop closes, page scroll is locked while open,
+// focus moves inside and cannot tab out of the dialog.
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 function useOverlay(open: boolean, onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return onClose()
+      if (e.key !== 'Tab' || !ref.current) return
+      const focusable = ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) (e.preventDefault(), last.focus())
+      else if (!e.shiftKey && document.activeElement === last) (e.preventDefault(), first.focus())
+    }
     document.addEventListener('keydown', onKey)
     const previous = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     const timer = window.setTimeout(() => {
       const first = ref.current?.querySelector<HTMLElement>('input, textarea, select, button:not([data-close])')
-      first?.focus()
+      ;(first ?? ref.current)?.focus()
     }, 30)
     return () => {
       document.removeEventListener('keydown', onKey)
       window.clearTimeout(timer)
+      document.body.style.overflow = previousOverflow
       previous?.focus?.()
     }
   }, [open, onClose])
@@ -251,8 +230,9 @@ export function Dialog({
           <motion.div
             ref={ref}
             role="dialog"
-            aria-modal
+            aria-modal="true"
             aria-label={title}
+            tabIndex={-1}
             className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-dialog bg-surface shadow-dialog"
             style={{ maxWidth: width }}
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
@@ -272,60 +252,6 @@ export function Dialog({
             <div className="scrollbar-thin overflow-y-auto px-6 py-5">{children}</div>
             {footer && <footer className="flex items-center justify-end gap-2 border-t border-line px-6 py-4">{footer}</footer>}
           </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-}
-
-export function Drawer({
-  open,
-  onClose,
-  title,
-  children,
-  header,
-  width = 520,
-}: {
-  open: boolean
-  onClose: () => void
-  title: string
-  children: ReactNode
-  header?: ReactNode
-  width?: number
-}) {
-  const ref = useOverlay(open, onClose)
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="overlay"
-          className="fixed inset-0 z-50 bg-fg/20"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
-          onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-        >
-          <motion.aside
-            ref={ref}
-            role="dialog"
-            aria-modal
-            aria-label={title}
-            className="absolute inset-y-2 right-2 flex w-[calc(100%-16px)] flex-col overflow-hidden rounded-dialog bg-surface shadow-dialog"
-            style={{ maxWidth: width }}
-            initial={{ x: 40, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 40, opacity: 0 }}
-            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
-              <div className="min-w-0 flex-1">{header ?? <h2 className="truncate text-[15px] font-semibold">{title}</h2>}</div>
-              <Button data-close variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
-                <X />
-              </Button>
-            </header>
-            <div className="scrollbar-thin flex-1 overflow-y-auto">{children}</div>
-          </motion.aside>
         </motion.div>
       )}
     </AnimatePresence>
@@ -394,7 +320,12 @@ export function Menu({
   }, [open])
   return (
     <div ref={ref} className="relative inline-flex">
-      <span onClick={(e) => (e.stopPropagation(), setOpen((v) => !v))} className="inline-flex">
+      <span
+        onClick={(e) => (e.stopPropagation(), setOpen((v) => !v))}
+        className="inline-flex"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
         {trigger}
       </span>
       <AnimatePresence>
@@ -449,7 +380,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-5 z-[60] flex flex-col items-center gap-2">
+      <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-5 z-[60] flex flex-col items-center gap-2">
         <AnimatePresence>
           {toasts.map((t) => (
             <motion.div
@@ -468,17 +399,5 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         </AnimatePresence>
       </div>
     </ToastContext.Provider>
-  )
-}
-
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em]">{title}</h1>
-        {subtitle && <p className="mt-0.5 text-[13.5px] text-muted">{subtitle}</p>}
-      </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
-    </div>
   )
 }
