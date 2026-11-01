@@ -1,0 +1,36 @@
+Fix the missing admin upload button by adding the real account email to the live roles table.
+
+State found in production D1 'study' roles table:
+- alex@example.com | admin | 1   (stale dev-user row from earlier local tests)
+- echoplexedits@gmail.com row is missing
+
+The app resolves roles by email (src/worker/db.ts roleFor). A sign-in as
+echoplexedits@gmail.com lands as a student because there is no matching row,
+even though the schema seeds that email as admin. That is why the profile
+showed no upload button.
+
+Exact fix (production D1 console or authenticated wrangler shell):
+  INSERT OR IGNORE INTO roles (email, role, created_at)
+    VALUES ('echoplexedits@gmail.com', 'admin',
+            CAST(strftime('%s','now') AS INTEGER) * 1000);
+  DELETE FROM roles WHERE email = 'alex@example.com';
+
+No code change, no schema change, no migration needed. The app already has the
+correct role model, seed, client gates, and requireAdmin guard.
+
+Verification (no console):
+1. Sign out, sign back in as echoplexedits@gmail.com.
+2. Settings badge under avatar must read "Admin — can edit the library".
+3. Library must show "Your decks" and "New deck".
+4. Any owned deck must show the card attachment upload control.
+5. A different email must still show "Student — read-only library" and cannot
+   create / upload / restore.
+
+Caution: do not widen the client gating to show upload for everyone. Normal
+users must still be blocked from upload, remove, and edit. The fix changes only
+the role data, not the permission logic.
+
+When to deploy:
+The role is resolved from the live D1 at runtime, so deploying before the row
+exists will not unblock the button. Deploy app code only if there is code to
+ship after the row is in place and the badge confirms admin.
