@@ -5,7 +5,8 @@ import { mapSession, now, streakFrom } from '../db'
 import { googleConfigured } from '../google'
 import type { AppContext } from '../env'
 import { clearUser, seedUser } from '../seed'
-import type { Me, Stats } from '../../shared/types'
+import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
+import type { Me, Stats, Storage } from '../../shared/types'
 
 export const account = new Hono<AppContext>()
 
@@ -91,6 +92,16 @@ account.get('/stats', async (c) => {
       mastery: Math.round(Number(d.mastery)),
     })),
   }
+  return privateJson(c, body)
+})
+
+account.get('/storage', async (c) => {
+  const row = await c
+    .get('db')
+    .prepare(`SELECT COALESCE(SUM(file_size), 0) AS used, COUNT(file_size) AS files FROM cards WHERE owner_sub = ?`)
+    .bind(c.get('user').sub)
+    .first<{ used: number; files: number }>()
+  const body: Storage = { used: Number(row?.used ?? 0), files: Number(row?.files ?? 0), maxFileSize: MAX_ATTACHMENT_BYTES }
   return privateJson(c, body)
 })
 

@@ -4,6 +4,7 @@ import { privateJson } from '../auth'
 import { CARD_SELECT, DECK_SELECT, hueFor, id, mapCard, mapDeck, mapSession, now } from '../db'
 import type { AppContext } from '../env'
 import type { SessionResult, StudyMode } from '../../shared/types'
+import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
 
 export const decks = new Hono<AppContext>()
 
@@ -142,51 +143,106 @@ decks.delete('/:id/cards/:cardId', async (c) => {
   return privateJson(c, { ok: true })
 })
 
-// Card images (R2). One image per card, replaced on upload.
+// Card attachments (R2): one image or document per card, replaced on upload.
+// The upload body is streamed straight into R2, so a large file is never held
+// in the Worker's memory and the only real ceiling is the platform's request
+// body limit (100 MB), which MAX_ATTACHMENT_BYTES stays under.
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const DOCUMENT_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/rtf',
+  'application/epub+zip',
+  'text/plain',
+  'text/csv',
+  'text/markdown',
+])
+const ATTACHMENT_TYPES = new Set([...IMAGE_TYPES, ...DOCUMENT_TYPES])
+const MAX_ATTACHMENT_MB = Math.round(MAX_ATTACHMENT_BYTES / (1024 * 1024))
 
-decks.put('/:id/cards/:cardId/image', async (c) => {
+/** A path-free, printable, header-safe filename. */
+function safeFileName(raw: string | undefined): string {
+  let value = raw ?? ''
+  try {
+    value = decodeURIComponent(value)
+  } catch {
+    /* keep the raw value */
+  }
+  const clean = value
+    .replace(/[\\/]/g, '-')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, 120)
+  return clean || 'attachment'
+}
+
+decks.put('/:id/cards/:cardId/file', async (c) => {
   const bucket = c.env.FILES
   if (!bucket) return c.json({ error: 'storage_missing', message: 'No file storage is attached yet. Add R2 storage named FILES and redeploy.' }, 503)
   const db = c.get('db')
   const owner = c.get('user').sub
   const cardId = c.req.param('cardId')
-  const existing = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND id = ?`).bind(owner, cardId).first<{ image_key: string | null }>()
+  const existing = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND id = ? AND deck_id = ?`).bind(owner, cardId, c.req.param('id')).first<{ image_key: string | null }>()
   if (!existing) return c.json({ error: 'Not found.' }, 404)
-  const form = await c.req.formData()
-  const file = form.get('file')
-  if (!(file instanceof File) || !IMAGE_TYPES.has(file.type)) return c.json({ error: 'Choose a PNG, JPEG, WebP or GIF image.' }, 400)
-  if (file.size > 4 * 1024 * 1024) return c.json({ error: 'Images are limited to 4 MB.' }, 400)
+
+  const type = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase()
+  if (!ATTACHMENT_TYPES.has(type)) {
+    return c.json({ error: 'unsupported_type', message: 'Attach an image (PNG, JPEG, WebP, GIF) or a PDF, Word, PowerPoint, Excel, text, CSV, Markdown or EPUB file.' }, 415)
+  }
+  const size = Number(c.req.header('content-length') ?? 0)
+  if (!Number.isFinite(size) || size <= 0) return c.json({ error: 'empty_file', message: 'That file looks empty.' }, 400)
+  if (size > MAX_ATTACHMENT_BYTES) return c.json({ error: 'file_too_large', message: `Files are limited to ${MAX_ATTACHMENT_MB} MB.` }, 413)
+  const body = c.req.raw.body
+  if (!body) return c.json({ error: 'empty_file', message: 'That file looks empty.' }, 400)
+
+  const name = safeFileName(c.req.header('x-file-name'))
   const key = `${owner}/cards/${cardId}/${crypto.randomUUID()}`
-  await bucket.put(key, file.stream(), { httpMetadata: { contentType: file.type } })
-  await db.prepare(`UPDATE cards SET image_key = ? WHERE owner_sub = ? AND id = ?`).bind(key, owner, cardId).run()
+  try {
+    await bucket.put(key, body, { httpMetadata: { contentType: type } })
+  } catch (error) {
+    console.error('attachment upload failed', error)
+    return c.json({ error: 'storage_unavailable', message: 'Storage could not accept that file — the space allocated to this site may be full.' }, 507)
+  }
+  await db.prepare(`UPDATE cards SET image_key = ?, file_name = ?, file_size = ?, file_type = ? WHERE owner_sub = ? AND id = ?`).bind(key, name, size, type, owner, cardId).run()
   if (existing.image_key) await bucket.delete(existing.image_key)
-  return privateJson(c, { ok: true })
+  return privateJson(c, { ok: true, file: { name, size, type } })
 })
 
-decks.delete('/:id/cards/:cardId/image', async (c) => {
+decks.delete('/:id/cards/:cardId/file', async (c) => {
   const db = c.get('db')
   const owner = c.get('user').sub
   const cardId = c.req.param('cardId')
-  const existing = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND id = ?`).bind(owner, cardId).first<{ image_key: string | null }>()
+  const existing = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND id = ? AND deck_id = ?`).bind(owner, cardId, c.req.param('id')).first<{ image_key: string | null }>()
   if (!existing) return c.json({ error: 'Not found.' }, 404)
-  await db.prepare(`UPDATE cards SET image_key = NULL WHERE owner_sub = ? AND id = ?`).bind(owner, cardId).run()
+  await db.prepare(`UPDATE cards SET image_key = NULL, file_name = NULL, file_size = NULL, file_type = NULL WHERE owner_sub = ? AND id = ?`).bind(owner, cardId).run()
   if (existing.image_key && c.env.FILES) await c.env.FILES.delete(existing.image_key)
   return privateJson(c, { ok: true })
 })
 
-decks.get('/:id/cards/:cardId/image', async (c) => {
+decks.get('/:id/cards/:cardId/file', async (c) => {
   const bucket = c.env.FILES
   if (!bucket) return c.json({ error: 'Not found.' }, 404)
   const owner = c.get('user').sub
-  const card = await c.get('db').prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND id = ?`).bind(owner, c.req.param('cardId')).first<{ image_key: string | null }>()
+  const card = await c.get('db').prepare(`SELECT image_key, file_name, file_type FROM cards WHERE owner_sub = ? AND id = ? AND deck_id = ?`).bind(owner, c.req.param('cardId'), c.req.param('id')).first<{ image_key: string | null; file_name: string | null; file_type: string | null }>()
   if (!card?.image_key) return c.json({ error: 'Not found.' }, 404)
   const object = await bucket.get(card.image_key)
   if (!object) return c.json({ error: 'Not found.' }, 404)
+  const type = object.httpMetadata?.contentType ?? card.file_type ?? 'application/octet-stream'
+  const name = card.file_name ?? 'attachment'
+  // Only images render inline. Everything else downloads, so a document can never
+  // execute as a page on this origin.
+  const disposition = type.startsWith('image/') ? 'inline' : 'attachment'
   return new Response(object.body, {
     headers: {
-      'Content-Type': object.httpMetadata?.contentType ?? 'image/jpeg',
+      'Content-Type': type,
+      'Content-Length': String(object.size),
+      'Content-Disposition': `${disposition}; filename="${name.replace(/["\\]/g, '')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
       'Cache-Control': 'private, max-age=300',
       'X-Content-Type-Options': 'nosniff',
     },

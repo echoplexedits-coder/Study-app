@@ -1,14 +1,14 @@
-import { ArrowLeft, Brain, Check, Image as ImageIcon, Layers, MoreHorizontal, Pencil, Plus, Shuffle, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Brain, Check, FileText, Layers, MoreHorizontal, Paperclip, Pencil, Plus, Shuffle, Trash2, X } from 'lucide-react'
 import { useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { ProgressRing } from '../components/DeckCard'
 import { Button, ConfirmDialog, Dialog, Field, FieldInput, FieldTextarea, Input, Menu, Spinner, useToast } from '../components/ui'
-import { api, uploadCardImage, useApiMutation, useDeck, useMe } from '../lib/api'
+import { api, uploadCardAttachment, useApiMutation, useDeck, useMe } from '../lib/api'
 import { cx } from '../lib/cx'
 import { relativeTime } from '../lib/format'
 import { parseCards } from './Library'
-import type { Card } from '../../shared/types'
+import { MAX_ATTACHMENT_BYTES, type Card } from '../../shared/types'
 
 const modes = [
   { key: 'flashcards', label: 'Flashcards', detail: 'Flip through and sort what you know', icon: Layers },
@@ -30,10 +30,13 @@ export function Deck() {
 
   const remove = useApiMutation(() => api(`/decks/${id}`, { method: 'DELETE' }), ['decks', 'stats', 'me'], { onSuccess: () => navigate('/') })
   const removeCard = useApiMutation((cardId: string) => api(`/decks/${id}/cards/${cardId}`, { method: 'DELETE' }), ['deck', 'decks'])
-  const imageMutation = useApiMutation((input: { cardId: string; file: File }) => uploadCardImage(id!, input.cardId, input.file), ['deck'], { onSuccess: () => toast('Image added') })
-  const removeImage = useApiMutation((cardId: string) => api(`/decks/${id}/cards/${cardId}/image`, { method: 'DELETE' }), ['deck'])
+  const attachFile = useApiMutation((input: { cardId: string; file: File }) => uploadCardAttachment(id!, input.cardId, input.file), ['deck', 'storage'], {
+    onSuccess: () => toast('Attachment added'),
+    onError: (error) => toast(error.message),
+  })
+  const removeAttachment = useApiMutation((cardId: string) => api(`/decks/${id}/cards/${cardId}/file`, { method: 'DELETE' }), ['deck', 'storage'])
   const fileInput = useRef<HTMLInputElement>(null)
-  const [imageTarget, setImageTarget] = useState<string | null>(null)
+  const [attachTarget, setAttachTarget] = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -141,7 +144,18 @@ export function Deck() {
               <span className="w-6 shrink-0 pt-0.5 text-[12px] tabular-nums text-faint">{i + 1}</span>
               <div className="min-w-0">
                 <p className="text-[15px] font-medium leading-snug">{card.term}</p>
-                {card.hasImage && <img src={`/api/decks/${deck.id}/cards/${card.id}/image`} alt="" loading="lazy" decoding="async" className="mt-2 h-20 w-28 rounded-[12px] object-cover" />}
+                {card.hasImage ? (
+                  <img src={`/api/decks/${deck.id}/cards/${card.id}/file`} alt="" loading="lazy" decoding="async" className="mt-2 h-20 w-28 rounded-[12px] object-cover" />
+                ) : card.fileName ? (
+                  <a
+                    href={`/api/decks/${deck.id}/cards/${card.id}/file`}
+                    download={card.fileName}
+                    className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-tile bg-surface-2 px-2.5 py-1.5 text-[12.5px] font-medium text-muted hover:text-fg"
+                  >
+                    <FileText className="size-3.5 shrink-0" />
+                    <span className="truncate">{card.fileName}</span>
+                  </a>
+                ) : null}
               </div>
             </div>
             <p className="text-[14.5px] leading-snug text-muted sm:border-l sm:border-line sm:pl-4">{card.definition}</p>
@@ -151,17 +165,17 @@ export function Deck() {
                 {me?.capabilities.files && (
                   <button
                     type="button"
-                    aria-label={card.hasImage ? 'Remove image' : 'Add image'}
+                    aria-label={card.hasImage || card.fileName ? 'Remove attachment' : 'Attach a file'}
                     onClick={() => {
-                      if (card.hasImage) removeImage.mutate(card.id)
+                      if (card.hasImage || card.fileName) removeAttachment.mutate(card.id)
                       else {
-                        setImageTarget(card.id)
+                        setAttachTarget(card.id)
                         fileInput.current?.click()
                       }
                     }}
-                    className={cx('grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg sm:size-8', card.hasImage && 'text-accent')}
+                    className={cx('grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg sm:size-8', Boolean(card.hasImage || card.fileName) && 'text-accent')}
                   >
-                    <ImageIcon className="size-4" />
+                    <Paperclip className="size-4" />
                   </button>
                 )}
                 <button type="button" aria-label="Edit card" onClick={() => setEditingCard(card)} className="grid size-9 place-items-center rounded-tile text-faint hover:bg-surface-2 hover:text-fg sm:size-8">
@@ -188,11 +202,14 @@ export function Deck() {
       <input
         ref={fileInput}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.md,.rtf,.epub"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0]
-          if (file && imageTarget) imageMutation.mutate({ cardId: imageTarget, file })
+          if (file && attachTarget) {
+            if (file.size > MAX_ATTACHMENT_BYTES) toast(`Files are limited to ${Math.round(MAX_ATTACHMENT_BYTES / (1024 * 1024))} MB.`)
+            else attachFile.mutate({ cardId: attachTarget, file })
+          }
           e.target.value = ''
         }}
       />

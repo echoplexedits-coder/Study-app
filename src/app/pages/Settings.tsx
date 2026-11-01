@@ -1,10 +1,23 @@
 import { useState } from 'react'
 
 import { Avatar, Badge, Button, ConfirmDialog, useToast } from '../components/ui'
-import { api, useApiMutation, useMe } from '../lib/api'
+import { api, useApiMutation, useMe, useStorage } from '../lib/api'
+
+function bytes(value: number): string {
+  if (value < 1024) return `${value} B`
+  const units = ['KB', 'MB', 'GB']
+  let size = value / 1024
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024
+    unit += 1
+  }
+  return `${size < 10 ? size.toFixed(1) : Math.round(size)} ${units[unit]}`
+}
 
 export function Settings() {
   const { data: me } = useMe()
+  const { data: storage } = useStorage()
   const toast = useToast()
   const [confirm, setConfirm] = useState<'reset' | 'clear' | null>(null)
   const keys = ['me', 'decks', 'deck', 'stats']
@@ -51,7 +64,7 @@ export function Settings() {
         <ul className="mt-3 divide-y divide-line rounded-card bg-surface shadow-card">
           {[
             ['Database', me.capabilities.database, 'D1 via the DB binding'],
-            ['Card images', me.capabilities.files, 'R2 via the FILES binding'],
+            ['Card attachments', me.capabilities.files, 'R2 via the FILES binding'],
             ['Sign in with Freebuff', me.capabilities.auth === 'freebuff', 'FREEBUFF_CLIENT_ID'],
             ['Sign in with Google', me.capabilities.google, 'GOOGLE_CLIENT_ID'],
           ].map(([label, ok, detail]) => (
@@ -66,6 +79,20 @@ export function Settings() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-[14px] font-semibold">Storage</h2>
+        <div className="mt-3 flex items-center gap-3 rounded-card bg-surface p-4 shadow-card">
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13.5px] font-medium">Attachments</span>
+            <span className="block text-[12.5px] text-muted">
+              {storage
+                ? `${bytes(storage.used)} across ${storage.files} ${storage.files === 1 ? 'file' : 'files'}. Images and documents up to ${bytes(storage.maxFileSize)} each.`
+                : 'Images and documents attached to your cards.'}
+            </span>
+          </span>
+        </div>
       </section>
 
       <section className="mt-8">

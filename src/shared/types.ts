@@ -2,6 +2,10 @@
 
 export const BRAND = 'Recall'
 
+// A Worker request body is capped at 100 MB by the platform, so the app stays
+// just under it. The body is streamed into R2, never buffered in memory.
+export const MAX_ATTACHMENT_BYTES = 90 * 1024 * 1024
+
 export type StudyMode = 'flashcards' | 'learn' | 'match'
 
 export interface Deck {
@@ -23,7 +27,11 @@ export interface Card {
   deckId: string
   term: string
   definition: string
+  // Images render inline; any other attachment is offered as a download.
   hasImage: boolean
+  fileName: string | null
+  fileSize: number
+  fileType: string | null
   position: number
   progress: { correct: number; incorrect: number; streak: number; mastery: number; nextDue: number | null; lastSeen: number | null }
 }
@@ -52,6 +60,12 @@ export interface Me {
   streak: number
   seeded: boolean
   capabilities: { database: boolean; files: boolean; auth: 'freebuff' | 'google' | 'development'; google: boolean }
+}
+
+export interface Storage {
+  used: number
+  files: number
+  maxFileSize: number
 }
 
 export interface Stats {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { AuthStatus, Card, Deck, Me, Session, SessionResult, Stats, StudyMode } from '../../shared/types'
+import type { AuthStatus, Card, Deck, Me, Session, SessionResult, Stats, Storage, StudyMode } from '../../shared/types'
 
 export class ApiError extends Error {
   constructor(
@@ -45,13 +45,18 @@ export const useDeck = (id: string | undefined) =>
     enabled: Boolean(id),
   })
 export const useStats = () => useQuery({ queryKey: ['stats'], queryFn: () => api<Stats>('/stats') })
+export const useStorage = () => useQuery({ queryKey: ['storage'], queryFn: () => api<Storage>('/storage') })
 
 export function useInvalidate() {
   const client = useQueryClient()
   return (...keys: string[]) => Promise.all(keys.map((key) => client.invalidateQueries({ queryKey: [key] })))
 }
 
-export function useApiMutation<TInput, TResult>(run: (input: TInput) => Promise<TResult>, invalidates: string[], options?: { onSuccess?: (result: TResult, input: TInput) => void }) {
+export function useApiMutation<TInput, TResult>(
+  run: (input: TInput) => Promise<TResult>,
+  invalidates: string[],
+  options?: { onSuccess?: (result: TResult, input: TInput) => void; onError?: (error: Error) => void },
+) {
   const invalidate = useInvalidate()
   return useMutation({
     mutationFn: run,
@@ -59,6 +64,7 @@ export function useApiMutation<TInput, TResult>(run: (input: TInput) => Promise<
       await invalidate(...invalidates)
       options?.onSuccess?.(result, input)
     },
+    onError: (error) => options?.onError?.(error),
   })
 }
 
@@ -69,8 +75,12 @@ export function recordSession(deckId: string, mode: StudyMode, results: SessionR
   })
 }
 
-export async function uploadCardImage(deckId: string, cardId: string, file: File) {
-  const form = new FormData()
-  form.set('file', file)
-  await api(`/decks/${deckId}/cards/${cardId}/image`, { method: 'PUT', body: form })
+// The file is the request body, so the Worker streams it straight into R2
+// instead of parsing a multipart form that would buffer it in memory.
+export async function uploadCardAttachment(deckId: string, cardId: string, file: File) {
+  await api(`/decks/${deckId}/cards/${cardId}/file`, {
+    method: 'PUT',
+    body: file,
+    headers: { 'content-type': file.type || 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) },
+  })
 }

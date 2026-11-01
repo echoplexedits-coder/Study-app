@@ -58,11 +58,27 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS sessions_owner ON sessions(owner_sub, created_at DESC)`,
 ]
 
+// Columns added after the first deploy. `CREATE TABLE IF NOT EXISTS` cannot
+// widen a table that already exists, so each one is added only when missing.
+const COLUMNS: [name: string, type: string][] = [
+  ['file_name', 'TEXT'],
+  ['file_size', 'INTEGER'],
+  ['file_type', 'TEXT'],
+]
+
+async function migrate(db: D1Database) {
+  const info = await db.prepare(`PRAGMA table_info(cards)`).all<{ name: string }>()
+  const existing = new Set(info.results.map((row) => row.name))
+  for (const [name, type] of COLUMNS) {
+    if (!existing.has(name)) await db.prepare(`ALTER TABLE cards ADD COLUMN ${name} ${type}`).run()
+  }
+}
+
 let ready: Promise<void> | undefined
 
 export function ensureSchema(db: D1Database): Promise<void> {
   ready ??= db.batch(SCHEMA.map((sql) => db.prepare(sql))).then(
-    () => undefined,
+    () => migrate(db),
     (error) => {
       ready = undefined
       throw error
@@ -126,7 +142,11 @@ export function mapCard(r: Row) {
     deckId: r.deck_id as string,
     term: r.term as string,
     definition: r.definition as string,
-    hasImage: Boolean(r.image_key),
+    // A row stored before attachments recorded their type is assumed to be an image.
+    hasImage: Boolean(r.image_key) && (!r.file_type || String(r.file_type).startsWith('image/')),
+    fileName: (r.file_name as string | null) ?? null,
+    fileSize: Number(r.file_size ?? 0),
+    fileType: (r.file_type as string | null) ?? null,
     position: Number(r.position ?? 0),
     progress: {
       correct: Number(r.correct ?? 0),
