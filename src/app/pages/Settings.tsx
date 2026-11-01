@@ -34,8 +34,8 @@ export function Settings() {
             <p className="truncate text-[15px] font-medium">{me.user.name ?? 'Signed in'}</p>
             {me.user.email && <p className="truncate text-[13px] text-muted">{me.user.email}</p>}
           </div>
-          {me.capabilities.auth === 'freebuff' ? (
-            <form method="post" action="/auth/freebuff/signout">
+          {me.capabilities.auth !== 'development' ? (
+            <form method="post" action={me.capabilities.auth === 'google' ? '/auth/google/signout' : '/auth/freebuff/signout'}>
               <input type="hidden" name="returnTo" value="/" />
               <Button type="submit">Sign out</Button>
             </form>
@@ -53,6 +53,7 @@ export function Settings() {
             ['Database', me.capabilities.database, 'D1 via the DB binding'],
             ['Card images', me.capabilities.files, 'R2 via the FILES binding'],
             ['Sign in with Freebuff', me.capabilities.auth === 'freebuff', 'FREEBUFF_CLIENT_ID'],
+            ['Sign in with Google', me.capabilities.google, 'GOOGLE_CLIENT_ID'],
           ].map(([label, ok, detail]) => (
             <li key={label as string} className="flex h-13 items-center gap-3 px-4">
               <span className="min-w-0 flex-1">

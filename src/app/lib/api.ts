@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { Card, Deck, Me, Session, SessionResult, Stats, StudyMode } from '../../shared/types'
+import type { AuthStatus, Card, Deck, Me, Session, SessionResult, Stats, StudyMode } from '../../shared/types'
 
 export class ApiError extends Error {
   constructor(
@@ -36,6 +36,7 @@ export async function api<T>(path: string, init?: RequestInit & { json?: unknown
 }
 
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false, staleTime: 60_000 })
+export const useAuthStatus = () => useQuery({ queryKey: ['auth-status'], queryFn: () => api<AuthStatus>('/auth/status'), retry: false, staleTime: 60_000 })
 export const useDecks = () => useQuery({ queryKey: ['decks'], queryFn: () => api<{ items: Deck[] }>('/decks') })
 export const useDeck = (id: string | undefined) =>
   useQuery({

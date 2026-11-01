@@ -5,3 +5,7 @@
 FREEBUFF_CLIENT_ID=
 FREEBUFF_ISSUER=https://freebuff.com/oidc
 APP_ORIGIN=http://localhost:5173
+# Optional Google sign-in. Create an OAuth web client in Google Cloud, then add
+# http://localhost:5173/auth/google/callback as an authorized redirect URI.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

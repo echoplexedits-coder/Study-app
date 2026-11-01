@@ -10,6 +10,10 @@ export interface Env {
   FREEBUFF_CLIENT_ID?: string
   FREEBUFF_ISSUER?: string
   APP_ORIGIN?: string
+  // Optional Google OAuth web client. Without both values the Google button is
+  // hidden and /auth/google/* answers 503, leaving Freebuff auth as the only way in.
+  GOOGLE_CLIENT_ID?: string
+  GOOGLE_CLIENT_SECRET?: string
 }
 
 export type Variables = {

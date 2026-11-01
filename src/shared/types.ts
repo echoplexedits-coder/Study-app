@@ -40,11 +40,18 @@ export interface Session {
   createdAt: number
 }
 
+export interface AuthStatus {
+  mode: 'freebuff' | 'development' | 'off'
+  database: boolean
+  files: boolean
+  google: boolean
+}
+
 export interface Me {
   user: { sub: string; name?: string; email?: string; picture?: string }
   streak: number
   seeded: boolean
-  capabilities: { database: boolean; files: boolean; auth: 'freebuff' | 'development' }
+  capabilities: { database: boolean; files: boolean; auth: 'freebuff' | 'google' | 'development'; google: boolean }
 }
 
 export interface Stats {

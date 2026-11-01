@@ -3,6 +3,7 @@ import type { FreebuffAuth, FreebuffUser } from '@freebuff/auth'
 import type { Context, MiddlewareHandler } from 'hono'
 
 import type { AppContext, Env } from './env'
+import { googleUser } from './google'
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
 
@@ -48,7 +49,11 @@ export function getAuth(env: Env, request: Request): FreebuffAuth | null {
 
 export async function currentUser(env: Env, request: Request): Promise<FreebuffUser | null> {
   const auth = getAuth(env, request)
-  if (auth) return auth.getUser(request)
+  const freebuff = auth ? await auth.getUser(request) : null
+  if (freebuff) return freebuff
+  // Google sessions are a separate identity namespace (`google:<sub>`).
+  const google = await googleUser(env, request)
+  if (google) return google
   return authMode(env, request) === 'development' ? DEV_USER : null
 }
 

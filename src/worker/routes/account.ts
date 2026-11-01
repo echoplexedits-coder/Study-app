@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 
 import { authMode, privateJson } from '../auth'
 import { mapSession, now, streakFrom } from '../db'
+import { googleConfigured } from '../google'
 import type { AppContext } from '../env'
 import { clearUser, seedUser } from '../seed'
 import type { Me, Stats } from '../../shared/types'
@@ -27,7 +28,12 @@ account.get('/me', async (c) => {
     user: { sub: user.sub, name: user.name, email: user.email, picture: user.picture },
     streak: streakFrom(await sessionDays(db, user.sub)).current,
     seeded: Boolean(row.seeded_at),
-    capabilities: { database: true, files: Boolean(c.env.FILES), auth: authMode(c.env, c.req.raw) === 'freebuff' ? 'freebuff' : 'development' },
+    capabilities: {
+      database: true,
+      files: Boolean(c.env.FILES),
+      auth: user.sub.startsWith('google:') ? 'google' : authMode(c.env, c.req.raw) === 'freebuff' ? 'freebuff' : 'development',
+      google: googleConfigured(c.env),
+    },
   }
   return privateJson(c, body)
 })
