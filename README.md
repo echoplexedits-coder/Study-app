@@ -1,4 +1,4 @@
-# Study app
+# myclassroom
 
 A flashcard study app in the spirit of Quizlet: a library of decks, three study
 modes (flashcards, multiple-choice learn and a timed match game), per-card

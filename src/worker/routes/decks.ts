@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 
 import { privateJson } from '../auth'
+import { peekBody, signatureOk } from '../files'
 import { CARD_SELECT, DECK_SELECT, hueFor, id, mapCard, mapDeck, mapSession, now, requireAdmin } from '../db'
 import type { AppContext } from '../env'
 import type { SessionResult, StudyMode } from '../../shared/types'
@@ -205,13 +206,23 @@ decks.put('/:id/cards/:cardId/file', async (c) => {
   const size = Number(c.req.header('content-length') ?? 0)
   if (!Number.isFinite(size) || size <= 0) return c.json({ error: 'empty_file', message: 'That file looks empty.' }, 400)
   if (size > MAX_ATTACHMENT_BYTES) return c.json({ error: 'file_too_large', message: `Files are limited to ${MAX_ATTACHMENT_MB} MB.` }, 413)
-  const body = c.req.raw.body
+  const { head, body } = await peekBody(c.req.raw, 16)
   if (!body) return c.json({ error: 'empty_file', message: 'That file looks empty.' }, 400)
+  // The declared type is only a claim; the bytes have to agree with it, so a
+  // renamed .html can never be stored as an image and later served from here.
+  if (!signatureOk(type, head)) {
+    return c.json({ error: 'invalid_signature', message: 'That file does not contain what its type says it does. Re-export it and try again.' }, 415)
+  }
 
   const name = safeFileName(c.req.header('x-file-name'))
   const key = `${owner}/cards/${cardId}/${crypto.randomUUID()}`
+  // Reading the signature meant replacing the request stream, and R2 only
+  // accepts a stream whose length is declared. FixedLengthStream restores that
+  // declared length so the body still streams straight into storage.
+  const fixed = new FixedLengthStream(size)
+  void body.pipeTo(fixed.writable).catch((error) => console.error('attachment relay failed', error))
   try {
-    await bucket.put(key, body, { httpMetadata: { contentType: type } })
+    await bucket.put(key, fixed.readable, { httpMetadata: { contentType: type } })
   } catch (error) {
     console.error('attachment upload failed', error)
     return c.json({ error: 'storage_unavailable', message: 'Storage could not accept that file — the space allocated to this site may be full.' }, 507)
@@ -258,6 +269,9 @@ decks.get('/:id/cards/:cardId/file', async (c) => {
       'Content-Disposition': `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
       'Cache-Control': 'private, max-age=300',
       'X-Content-Type-Options': 'nosniff',
+      // Nothing from R2 is a document on this origin: images stand alone and
+      // every other type is an attachment download.
+      'Content-Security-Policy': "default-src 'none'; sandbox",
     },
   })
 })

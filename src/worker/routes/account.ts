@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { authMode, privateJson } from '../auth'
-import { mapSession, now, requireAdmin, streakFrom } from '../db'
+import { logAudit, mapSession, now, requireAdmin, streakFrom } from '../db'
 import { googleConfigured } from '../google'
 import type { AppContext } from '../env'
 import { clearProgress, clearUser, seedUser } from '../seed'
@@ -9,6 +9,24 @@ import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
 import type { Me, Stats, Storage } from '../../shared/types'
 
 export const account = new Hono<AppContext>()
+
+/**
+ * Removes a person's library and the R2 objects behind it. clearUser() only
+ * touches the database, so without this every reset or clear left the old
+ * images in storage with nothing pointing at them.
+ */
+async function clearOwned(db: D1Database, owner: string, bucket?: R2Bucket) {
+  const keys = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND image_key IS NOT NULL`).bind(owner).all<{ image_key: string }>()
+  await clearUser(db, owner)
+  if (!bucket || keys.results.length === 0) return
+  try {
+    for (let i = 0; i < keys.results.length; i += 100) {
+      await bucket.delete(keys.results.slice(i, i + 100).map((row) => row.image_key))
+    }
+  } catch (error) {
+    console.error('library cleanup failed', error)
+  }
+}
 
 async function sessionDays(db: D1Database, owner: string): Promise<Set<string>> {
   const rows = await db.prepare(`SELECT DISTINCT date(created_at / 1000, 'unixepoch') AS day FROM sessions WHERE owner_sub = ?`).bind(owner).all<{ day: string }>()
@@ -122,15 +140,19 @@ account.get('/storage', async (c) => {
 account.post('/account/reset', requireAdmin, async (c) => {
   const db = c.get('db')
   const owner = c.get('user').sub
-  await clearUser(db, owner)
+  await clearOwned(db, owner, c.env.FILES)
   await seedUser(db, owner)
+  await logAudit(db, c.get('user'), 'library.restore', owner)
   return privateJson(c, { ok: true })
 })
 
 account.delete('/account/data', async (c) => {
   // A student clears their own history only. Deleting decks and cards here would
   // let a demoted admin wipe the class library through their own settings page.
-  if (c.get('role') === 'admin') await clearUser(c.get('db'), c.get('user').sub)
-  else await clearProgress(c.get('db'), c.get('user').sub)
+  const db = c.get('db')
+  const admin = c.get('role') === 'admin'
+  if (admin) await clearOwned(db, c.get('user').sub, c.env.FILES)
+  else await clearProgress(db, c.get('user').sub)
+  await logAudit(db, c.get('user'), admin ? 'library.clear' : 'progress.clear', c.get('user').sub)
   return privateJson(c, { ok: true })
 })

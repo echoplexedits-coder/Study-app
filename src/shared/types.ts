@@ -1,6 +1,6 @@
 // Types shared by the Worker (src/worker) and the app (src/app).
 
-export const BRAND = 'Recall'
+export const BRAND = 'myclassroom'
 
 export type Role = 'admin' | 'student'
 
@@ -57,6 +57,16 @@ export interface AuthStatus {
   database: boolean
   files: boolean
   google: boolean
+}
+
+// The policy version a person accepted, and when. `accepted` is false when the
+// newest acceptance predates the current POLICY_VERSION.
+export interface ConsentStatus {
+  version: string
+  effective: string
+  accepted: boolean
+  acceptedAt: number | null
+  acceptedVersion: string | null
 }
 
 export interface Me {

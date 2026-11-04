@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { AuthStatus, Card, Deck, Me, Session, SessionResult, Stats, Storage, StudyMode } from '../../shared/types'
+import type { AuthStatus, Card, ConsentStatus, Deck, Me, Session, SessionResult, Stats, Storage, StudyMode } from '../../shared/types'
 
 export class ApiError extends Error {
   constructor(
@@ -46,6 +46,67 @@ export const useDeck = (id: string | undefined) =>
   })
 export const useStats = () => useQuery({ queryKey: ['stats'], queryFn: () => api<Stats>('/stats') })
 export const useStorage = () => useQuery({ queryKey: ['storage'], queryFn: () => api<Storage>('/storage') })
+export const useConsent = () =>
+  useQuery({ queryKey: ['consent'], queryFn: () => api<ConsentStatus>('/legal/status'), retry: false, staleTime: 0 })
+
+/** Records the accepted policy version and the moment it was accepted. */
+export function acceptPolicies(input: { version: string; terms: boolean; privacy: boolean; age: boolean }) {
+  return api<{ ok: true; version: string; acceptedAt: number }>('/legal/consent', { method: 'POST', json: input })
+}
+
+/** Downloads a copy of everything the server holds about the signed-in person. */
+export async function downloadMyData(): Promise<string> {
+  const response = await fetch('/api/legal/export', { credentials: 'same-origin', headers: { accept: 'application/json' } })
+  if (!response.ok) {
+    let message = 'Your data could not be exported.'
+    try {
+      const body = (await response.json()) as { message?: string; error?: string }
+      message = body.message ?? body.error ?? message
+    } catch {
+      /* no body */
+    }
+    throw new ApiError(response.status, message)
+  }
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'myclassroom-my-data.json'
+  const url = URL.createObjectURL(await response.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+  return name
+}
+
+export function deleteAccount(confirm: string) {
+  return api<{ ok: true; deleted: { decks: number; attachments: number; sessions: number } }>('/legal/delete-account', {
+    method: 'POST',
+    json: { confirm },
+  })
+}
+
+export function requestDeletion(kind: 'delete_account' | 'delete_data', details: string) {
+  return api<{ ok: true; duplicate: boolean }>('/legal/deletion-request', { method: 'POST', json: { kind, details } })
+}
+
+export function fileReport(input: {
+  kind: 'content' | 'copyright'
+  targetType: 'deck' | 'card' | 'classwork' | 'other'
+  targetId?: string
+  reason: string
+  details: string
+  goodFaith: boolean
+  accuracyConfirmed: boolean
+  rightsHolder?: boolean
+}) {
+  return api<{ ok: true; id: string }>('/legal/report', { method: 'POST', json: input })
+}
+
+export function sendContact(input: { name: string; email: string; topic: string; message: string; consent: boolean; website?: string }) {
+  return api<{ ok: true }>('/legal/contact', { method: 'POST', json: input })
+}
 
 export function useInvalidate() {
   const client = useQueryClient()
@@ -94,6 +155,20 @@ const EXTENSION_TYPES: Record<string, string> = {
 
 // The file is the request body, so the Worker streams it straight into R2
 // instead of parsing a multipart form that would buffer it in memory.
+export async function uploadClassworkFile(file: File, name: string, class_: string, subject: string, date: string) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('name', name)
+  form.append('class', class_)
+  form.append('subject', subject)
+  form.append('date', date)
+  await api('/admin/files', { method: 'POST', body: form })
+}
+
+export async function deleteClassworkFile(name: string) {
+  await api('/admin/files/' + encodeURIComponent(name), { method: 'DELETE' })
+}
+
 export async function uploadCardAttachment(deckId: string, cardId: string, file: File) {
   const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
   const type = file.type || EXTENSION_TYPES[extension] || 'application/octet-stream'

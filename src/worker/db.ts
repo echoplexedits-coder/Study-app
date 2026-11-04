@@ -70,6 +70,73 @@ const SCHEMA = [
     PRIMARY KEY (owner_sub, card_id)
   )`,
   `CREATE INDEX IF NOT EXISTS progress_v2_deck ON card_progress_v2(owner_sub, deck_id)`,
+  // Append-only trail of privileged actions (role changes, uploads, deletes).
+  // Only the admin can read it, and every write is best-effort so a logging
+  // failure can never break the action it describes.
+  `CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    actor_sub TEXT NOT NULL,
+    actor_email TEXT,
+    action TEXT NOT NULL,
+    target TEXT,
+    detail TEXT,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS audit_created ON audit_log(created_at DESC)`,
+  // Which policy version each account accepted, and when. The version travels
+  // with the row so a later policy change can require fresh consent without
+  // erasing the record of the old one.
+  `CREATE TABLE IF NOT EXISTS consents (
+    owner_sub TEXT NOT NULL,
+    policy_version TEXT NOT NULL,
+    accepted_at INTEGER NOT NULL,
+    source TEXT NOT NULL DEFAULT 'signin',
+    PRIMARY KEY (owner_sub, policy_version)
+  )`,
+  `CREATE INDEX IF NOT EXISTS consents_version ON consents(policy_version, accepted_at DESC)`,
+  // Content and copyright reports. Reporter identity is removed if the account
+  // is deleted, so the moderation record survives without holding personal data.
+  `CREATE TABLE IF NOT EXISTS content_reports (
+    id TEXT PRIMARY KEY,
+    reporter_sub TEXT,
+    reporter_email TEXT,
+    kind TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    reason TEXT NOT NULL,
+    details TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    resolution TEXT,
+    created_at INTEGER NOT NULL,
+    resolved_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS reports_created ON content_reports(created_at DESC)`,
+  // Deletion / access requests filed from inside the app, so the operator has a
+  // durable record when the person cannot or will not use the self-serve path.
+  `CREATE TABLE IF NOT EXISTS data_requests (
+    id TEXT PRIMARY KEY,
+    owner_sub TEXT NOT NULL,
+    email TEXT,
+    kind TEXT NOT NULL,
+    details TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at INTEGER NOT NULL,
+    resolved_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS requests_created ON data_requests(created_at DESC)`,
+  // Messages sent through the public Contact page. There is deliberately no
+  // invented support email: the form is the channel.
+  `CREATE TABLE IF NOT EXISTS contact_messages (
+    id TEXT PRIMARY KEY,
+    owner_sub TEXT,
+    name TEXT,
+    email TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'new',
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS messages_created ON contact_messages(created_at DESC)`,
 ]
 
 // Columns added after the first deploy. `CREATE TABLE IF NOT EXISTS` cannot
@@ -129,6 +196,18 @@ export const requireDb: MiddlewareHandler<AppContext> = async (c, next) => {
 
 export const id = () => crypto.randomUUID()
 export const now = () => Date.now()
+
+/** Records who did what. Never throws: an audit write must not fail the request. */
+export async function logAudit(db: D1Database, user: FreebuffUser, action: string, target?: string | null, detail?: string | null): Promise<void> {
+  try {
+    await db
+      .prepare(`INSERT INTO audit_log (id, actor_sub, actor_email, action, target, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id(), user.sub, user.email ?? null, action, target ?? null, detail ?? null, now())
+      .run()
+  } catch (error) {
+    console.error('audit log write failed', error)
+  }
+}
 
 /** The role comes from the database, never from a request or a hardcoded list. */
 export async function roleFor(db: D1Database, user: FreebuffUser): Promise<Role> {

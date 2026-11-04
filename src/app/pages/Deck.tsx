@@ -29,8 +29,10 @@ export function Deck() {
   const [editingCard, setEditingCard] = useState<Card | null>(null)
   const [deletingCard, setDeletingCard] = useState<Card | null>(null)
 
-  const remove = useApiMutation(() => api(`/decks/${id}`, { method: 'DELETE' }), ['decks', 'stats', 'me'], { onSuccess: () => navigate('/') })
-  const removeCard = useApiMutation((cardId: string) => api(`/decks/${id}/cards/${cardId}`, { method: 'DELETE' }), ['deck', 'decks'])
+  // Deleting a deck or a card can free attachments, so the storage total is
+  // invalidated with them; otherwise Settings keeps reporting the old usage.
+  const remove = useApiMutation(() => api(`/decks/${id}`, { method: 'DELETE' }), ['decks', 'stats', 'me', 'storage'], { onSuccess: () => navigate('/') })
+  const removeCard = useApiMutation((cardId: string) => api(`/decks/${id}/cards/${cardId}`, { method: 'DELETE' }), ['deck', 'decks', 'storage'])
   const attachFile = useApiMutation((input: { cardId: string; file: File }) => uploadCardAttachment(id!, input.cardId, input.file), ['deck', 'storage'], {
     onSuccess: () => toast('Attachment added'),
     onError: (error) => toast(error.message),

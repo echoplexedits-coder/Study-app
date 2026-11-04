@@ -33,10 +33,22 @@ function fromB64url(value: string): Uint8Array<ArrayBuffer> {
   return bytes
 }
 
-/** Only same-site paths are returned to after signing in. */
+/**
+ * Only same-site paths are returned to after signing in. The value is re-parsed
+ * against a throwaway origin because a plain string test misses `//evil.example`
+ * variants and `/\\evil.example`, which browsers normalise into a
+ * protocol-relative redirect. Control characters are rejected outright.
+ */
 function safeReturnTo(value: string | null): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/'
-  return value
+  if (!value || !value.startsWith('/')) return '/'
+  if (value.startsWith('//') || value.includes('\\') || /[\u0000-\u001f\u007f]/.test(value)) return '/'
+  try {
+    const parsed = new URL(value, 'https://internal.invalid')
+    if (parsed.origin !== 'https://internal.invalid') return '/'
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return '/'
+  }
 }
 
 function origin(env: Env, request: Request): string {

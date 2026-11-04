@@ -1,7 +1,9 @@
 import { motion } from 'motion/react'
 import { ArrowRight, Database } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { Logo } from '../components/Shell'
+import { LegalFooter } from '../components/LegalFooter'
 import { Skeleton } from '../components/ui'
 import { useAuthStatus } from '../lib/api'
 
@@ -25,7 +27,7 @@ export function SignIn() {
               <>
                 <a
                   href={`/auth/google/start?returnTo=${returnTo}`}
-                  className="inline-flex h-12 items-center justify-center gap-2.5 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#2a2838]"
+                  className="inline-flex h-12 items-center justify-center gap-2.5 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#1b2c45]"
                 >
                   <span className="grid size-5 place-items-center rounded-[6px] bg-white text-[12px] font-bold text-[#1a73e8]">G</span>
                   Continue with Google
@@ -43,7 +45,7 @@ export function SignIn() {
               <>
                 <a
                   href={`/auth/freebuff/signin?returnTo=${returnTo}`}
-                  className="inline-flex h-12 items-center justify-center gap-2.5 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#2a2838]"
+                  className="inline-flex h-12 items-center justify-center gap-2.5 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#1b2c45]"
                 >
                   <span className="grid size-5 place-items-center rounded-[6px] bg-white text-[11px] font-bold text-fg">F</span>
                   Sign in with Freebuff
@@ -69,8 +71,15 @@ export function SignIn() {
               </span>
             </div>
           </div>
+          <p className="mt-6 max-w-sm text-[12px] leading-relaxed text-faint">
+            After signing in you will be asked to accept the{' '}
+            <Link to="/terms" className="text-muted underline underline-offset-2 hover:text-fg">Terms of Use</Link> and the{' '}
+            <Link to="/acceptable-use" className="text-muted underline underline-offset-2 hover:text-fg">Acceptable Use Policy</Link>, and to confirm that you have read the{' '}
+            <Link to="/privacy" className="text-muted underline underline-offset-2 hover:text-fg">Privacy Policy</Link>.
+          </p>
         </motion.div>
       </main>
+      <LegalFooter />
     </div>
   )
 }
