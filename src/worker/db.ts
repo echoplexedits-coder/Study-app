@@ -20,6 +20,10 @@ const SCHEMA = [
     description TEXT,
     hue INTEGER NOT NULL DEFAULT 250,
     last_studied_at INTEGER,
+    cover_image_key TEXT,
+    cover_file_name TEXT,
+    cover_file_size INTEGER,
+    cover_file_type TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
@@ -124,8 +128,8 @@ const SCHEMA = [
     resolved_at INTEGER
   )`,
   `CREATE INDEX IF NOT EXISTS requests_created ON data_requests(created_at DESC)`,
-  // Messages sent through the public Contact page. There is deliberately no
-  // invented support email: the form is the channel.
+  // Messages sent through the public Contact page. The published contact email
+  // is the other channel; both reach the operator.
   `CREATE TABLE IF NOT EXISTS contact_messages (
     id TEXT PRIMARY KEY,
     owner_sub TEXT,
@@ -137,6 +141,85 @@ const SCHEMA = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS messages_created ON contact_messages(created_at DESC)`,
+  // Username reservations. The primary key is the lock that makes a claim
+  // atomic: two simultaneous registrations race on one INSERT and one loses.
+  // A released name keeps its row (owner_sub NULL) so it stays out of
+  // circulation for the cooldown window instead of being grabbed immediately.
+  `CREATE TABLE IF NOT EXISTS username_reservations (
+    name TEXT PRIMARY KEY,
+    owner_sub TEXT,
+    released_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS reservations_owner ON username_reservations(owner_sub)`,
+  // Server-side sessions for username/password accounts: the cookie carries a
+  // random token, and only its hash is stored, so a database leak cannot be
+  // replayed as a sign-in.
+  `CREATE TABLE IF NOT EXISTS auth_sessions (
+    token_hash TEXT PRIMARY KEY,
+    owner_sub TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    user_agent TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS auth_sessions_owner ON auth_sessions(owner_sub)`,
+  // Durable counters for the sign-in and registration limits.
+  `CREATE TABLE IF NOT EXISTS login_attempts (
+    key TEXT PRIMARY KEY,
+    count INTEGER NOT NULL,
+    window_start INTEGER NOT NULL
+  )`,
+  // One-time reset tokens, stored hashed; the link is shown once and expires.
+  `CREATE TABLE IF NOT EXISTS password_resets (
+    token_hash TEXT PRIMARY KEY,
+    owner_sub TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    issued_by TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS resets_owner ON password_resets(owner_sub)`,
+  // "Forgot password" filed from the sign-in page. Without an email provider
+  // configured the request waits here for an admin to hand out one-time link.
+  `CREATE TABLE IF NOT EXISTS reset_requests (
+    id TEXT PRIMARY KEY,
+    owner_sub TEXT,
+    identifier TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at INTEGER NOT NULL,
+    resolved_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS reset_requests_created ON reset_requests(created_at DESC)`,
+  // Sequential counters (student IDs). Updated with RETURNING so two
+  // simultaneous registrations can never read the same value.
+  `CREATE TABLE IF NOT EXISTS counters (
+    name TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+  )`,
+  // Provider id → canonical account. Only populated when an account was itself
+  // created by a provider, never to merge an unverified password account.
+  `CREATE TABLE IF NOT EXISTS identity_links (
+    provider_sub TEXT PRIMARY KEY,
+    owner_sub TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS identity_links_owner ON identity_links(owner_sub)`,
+]
+
+// Columns added to `users` after the identity work. Each is added only when
+// missing, so an existing database keeps every row it already has.
+const USER_COLUMNS: [name: string, type: string][] = [
+  ['full_name', 'TEXT'],
+  ['username', 'TEXT'],
+  ['username_key', 'TEXT'],
+  ['student_id', 'TEXT'],
+  ['email', 'TEXT'],
+  ['email_key', 'TEXT'],
+  ['status', "TEXT NOT NULL DEFAULT 'active'"],
+  ['password_hash', 'TEXT'],
+  ['username_updated_at', 'INTEGER'],
+  ['onboarded_at', 'INTEGER'],
+  ['deleted_at', 'INTEGER'],
 ]
 
 // Columns added after the first deploy. `CREATE TABLE IF NOT EXISTS` cannot
@@ -147,7 +230,31 @@ const COLUMNS: [name: string, type: string][] = [
   ['file_type', 'TEXT'],
 ]
 
+// Cover images were added after the first deploy, like card attachments.
+const DECK_COLUMNS: [name: string, type: string][] = [
+  ['cover_image_key', 'TEXT'],
+  ['cover_file_name', 'TEXT'],
+  ['cover_file_size', 'INTEGER'],
+  ['cover_file_type', 'TEXT'],
+]
+
 async function migrate(db: D1Database) {
+  // Identity columns first: the unique indexes below reference them.
+  const userInfo = await db.prepare(`PRAGMA table_info(users)`).all<{ name: string }>()
+  const userColumns = new Set(userInfo.results.map((row) => row.name))
+  for (const [name, type] of USER_COLUMNS) {
+    if (!userColumns.has(name)) await db.prepare(`ALTER TABLE users ADD COLUMN ${name} ${type}`).run()
+  }
+  // Uniqueness is enforced by the database, not by a check in front of it.
+  await db.batch([
+    db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_key ON users(username_key)`),
+    db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS users_student_id ON users(student_id)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS users_email_key ON users(email_key)`),
+    // Only username/password accounts need a unique email; a Google identity
+    // and a Freebuff identity may legitimately share one address.
+    db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_local ON users(email_key) WHERE password_hash IS NOT NULL`),
+  ])
+
   const cardInfo = await db.prepare(`PRAGMA table_info(cards)`).all<{ name: string }>()
   const cardColumns = new Set(cardInfo.results.map((row) => row.name))
   for (const [name, type] of COLUMNS) {
@@ -156,8 +263,12 @@ async function migrate(db: D1Database) {
 
   // A shared deck belongs to the class library rather than to one person.
   const deckInfo = await db.prepare(`PRAGMA table_info(decks)`).all<{ name: string }>()
-  if (!deckInfo.results.some((row) => row.name === 'shared')) {
+  const deckColumns = new Set(deckInfo.results.map((row) => row.name))
+  if (!deckColumns.has('shared')) {
     await db.prepare(`ALTER TABLE decks ADD COLUMN shared INTEGER NOT NULL DEFAULT 0`).run()
+  }
+  for (const [name, type] of DECK_COLUMNS) {
+    if (!deckColumns.has(name)) await db.prepare(`ALTER TABLE decks ADD COLUMN ${name} ${type}`).run()
   }
 
   // One-time move of the old single-row-per-card progress into the per-user
@@ -218,7 +329,15 @@ export async function roleFor(db: D1Database, user: FreebuffUser): Promise<Role>
 }
 
 export const loadRole: MiddlewareHandler<AppContext> = async (c, next) => {
-  c.set('role', await roleFor(c.get('db'), c.get('user')))
+  const db = c.get('db')
+  const user = c.get('user')
+  c.set('role', await roleFor(db, user))
+  // A suspended account keeps its data but can do nothing: the check is here,
+  // on every /api request, rather than in the buttons that might call them.
+  const row = await db.prepare(`SELECT status FROM users WHERE owner_sub = ?`).bind(user.sub).first<{ status: string }>()
+  if (row?.status === 'suspended') {
+    return c.json({ error: 'account_suspended', message: 'This account is suspended. Ask the site admin to restore it.' }, 403)
+  }
   await next()
 }
 
@@ -247,6 +366,7 @@ export const DECK_SELECT = `
   FROM decks d`
 
 export function mapDeck(r: Row) {
+  const coverKey = r.cover_image_key ? String(r.cover_image_key) : null
   return {
     id: r.id as string,
     title: r.title as string,
@@ -256,6 +376,8 @@ export function mapDeck(r: Row) {
     mastered: Number(r.mastered ?? 0),
     mastery: Math.round(Number(r.mastery ?? 0)),
     dueCount: Number(r.due_count ?? 0),
+    hasCover: Boolean(coverKey),
+    coverVersion: coverKey ? coverKey.split('/').pop() ?? null : null,
     lastStudiedAt: r.last_studied_at === null || r.last_studied_at === undefined ? null : Number(r.last_studied_at),
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),

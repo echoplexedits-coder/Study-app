@@ -34,12 +34,15 @@ export function SignIn() {
                   <ArrowRight className="size-4" />
                 </a>
                 <p className="text-[13px] leading-relaxed text-muted">Sign in with the Google account you already use. No new account to create, no password to remember.</p>
-                <p className="text-[13px] text-faint">
-                  Have a Freebuff account?{' '}
-                  <a href={`/auth/freebuff/signin?returnTo=${returnTo}`} className="font-medium text-accent underline underline-offset-2 hover:text-accent-deep">
-                    Sign in with Freebuff
-                  </a>
-                </p>
+                <span className="text-[13px] text-faint">or</span>
+                <a
+                  href={`/auth/freebuff/signin?returnTo=${returnTo}`}
+                  className="inline-flex h-12 items-center justify-center gap-2.5 rounded-control bg-fg px-5 text-[15px] font-medium text-white transition-colors hover:bg-[#1b2c45]"
+                >
+                  <span className="grid size-5 place-items-center rounded-[6px] bg-white text-[11px] font-bold text-fg">F</span>
+                  Sign in with Freebuff
+                  <ArrowRight className="size-4" />
+                </a>
               </>
             ) : (
               <>

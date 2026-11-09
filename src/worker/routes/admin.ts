@@ -181,6 +181,10 @@ admin.post('/admin/restore', requireAdmin, async (c) => {
         description: text(raw.description, 300),
         hue: Math.abs(whole(raw.hue, 250)) % 360,
         shared: raw.shared === 1 || raw.shared === true ? 1 : 0,
+        coverKey: text(raw.cover_image_key, 400),
+        coverFileName: text(raw.cover_file_name, 120),
+        coverFileSize: whole(raw.cover_file_size, 0),
+        coverFileType: text(raw.cover_file_type, 120),
         lastStudiedAt: maybe(raw.last_studied_at),
         createdAt: whole(raw.created_at, Date.now()),
         updatedAt: whole(raw.updated_at, Date.now()),
@@ -213,7 +217,12 @@ admin.post('/admin/restore', requireAdmin, async (c) => {
   // gone is dropped rather than left pointing at nothing. Verification is
   // skipped for very large snapshots to stay inside the subrequest budget.
   const bucket = c.env.FILES
-  const imageKeys = [...new Set(cardRows.map((card) => card.imageKey).filter((key): key is string => Boolean(key)))]
+  const imageKeys = [
+    ...new Set([
+      ...cardRows.map((card) => card.imageKey).filter((key): key is string => Boolean(key)),
+      ...deckRows.map((deck) => deck.coverKey).filter((key): key is string => Boolean(key)),
+    ]),
+  ]
   const missingKeys = new Set<string>()
   const verifying = Boolean(bucket) && imageKeys.length > 0 && imageKeys.length <= 50
   if (bucket && verifying) {
@@ -298,8 +307,14 @@ admin.post('/admin/restore', requireAdmin, async (c) => {
   // of leaving them orphaned in R2 forever.
   let replacedKeys: string[] = []
   if (mode === 'replace' && c.env.FILES) {
-    const existing = await db.prepare(`SELECT image_key FROM cards WHERE image_key IS NOT NULL`).all<{ image_key: string }>()
-    replacedKeys = existing.results.map((row) => row.image_key)
+    const [existing, covers] = await db.batch([
+      db.prepare(`SELECT image_key FROM cards WHERE image_key IS NOT NULL`),
+      db.prepare(`SELECT cover_image_key FROM decks WHERE cover_image_key IS NOT NULL`),
+    ])
+    replacedKeys = [
+      ...(existing.results as { image_key: string }[]).map((row) => row.image_key),
+      ...(covers.results as { cover_image_key: string }[]).map((row) => row.cover_image_key),
+    ]
   }
 
   // A replace starts clean, so ids that are absent from the snapshot really go.
@@ -324,15 +339,32 @@ admin.post('/admin/restore', requireAdmin, async (c) => {
   await flush()
 
   for (const row of deckRows) {
+    const coverKey = row.coverKey && !missingKeys.has(row.coverKey) ? row.coverKey : null
     statements.push(
       db
         .prepare(
-          `INSERT INTO decks (id, owner_sub, title, description, hue, shared, last_studied_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO decks (id, owner_sub, title, description, hue, shared, cover_image_key, cover_file_name, cover_file_size, cover_file_type, last_studied_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET owner_sub = excluded.owner_sub, title = excluded.title, description = excluded.description,
-             hue = excluded.hue, shared = excluded.shared, last_studied_at = excluded.last_studied_at, updated_at = excluded.updated_at`,
+             hue = excluded.hue, shared = excluded.shared, cover_image_key = excluded.cover_image_key,
+             cover_file_name = excluded.cover_file_name, cover_file_size = excluded.cover_file_size,
+             cover_file_type = excluded.cover_file_type, last_studied_at = excluded.last_studied_at, updated_at = excluded.updated_at`,
         )
-        .bind(row.id, row.ownerSub, row.title, row.description, row.hue, row.shared, row.lastStudiedAt, row.createdAt, row.updatedAt),
+        .bind(
+          row.id,
+          row.ownerSub,
+          row.title,
+          row.description,
+          row.hue,
+          row.shared,
+          coverKey,
+          coverKey ? row.coverFileName : null,
+          coverKey ? row.coverFileSize : 0,
+          coverKey ? row.coverFileType : null,
+          row.lastStudiedAt,
+          row.createdAt,
+          row.updatedAt,
+        ),
     )
   }
   await flush()
@@ -394,7 +426,12 @@ admin.post('/admin/restore', requireAdmin, async (c) => {
   await flush()
 
   if (mode === 'replace' && c.env.FILES && replacedKeys.length) {
-    const keep = new Set(cardRows.map((row) => row.imageKey).filter((key): key is string => typeof key === 'string' && !missingKeys.has(key)))
+    const keep = new Set(
+      [
+        ...cardRows.map((row) => row.imageKey),
+        ...deckRows.map((row) => row.coverKey),
+      ].filter((key): key is string => typeof key === 'string' && !missingKeys.has(key)),
+    )
     const remove = replacedKeys.filter((key) => !keep.has(key))
     try {
       for (let i = 0; i < remove.length; i += 100) await c.env.FILES.delete(remove.slice(i, i + 100))

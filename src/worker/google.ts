@@ -2,6 +2,7 @@ import { isSameOriginRequest } from '@freebuff/auth'
 import type { FreebuffUser } from '@freebuff/auth'
 import type { Context } from 'hono'
 
+import { ensureSchema } from './db'
 import type { AppContext, Env } from './env'
 
 // Google sign-in is optional: it needs a Google Cloud OAuth web client. When
@@ -93,7 +94,7 @@ async function signingKey(env: Env): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', encoder.encode(`recall-google-session:${env.GOOGLE_CLIENT_SECRET}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
 }
 
-type GoogleSession = { sub: string; name?: string; email?: string; picture?: string; exp: number }
+type GoogleSession = { sub: string; name?: string; email?: string; picture?: string; email_verified?: boolean; exp: number }
 
 async function signSession(env: Env, session: GoogleSession): Promise<string> {
   const payload = b64url(encoder.encode(JSON.stringify(session)))
@@ -113,10 +114,18 @@ export async function googleUser(env: Env, request: Request): Promise<FreebuffUs
     if (!valid) return null
     const session = JSON.parse(decoder.decode(fromB64url(payload))) as GoogleSession
     if (!session.sub || typeof session.exp !== 'number' || session.exp < Date.now()) return null
-    return { sub: session.sub, name: session.name, email: session.email, picture: session.picture, email_verified: true }
+    // Only an explicit flag from Google counts; an older cookie without the
+    // claim is signed in but never used to merge two identities.
+    return { sub: session.sub, name: session.name, email: session.email, picture: session.picture, email_verified: session.email_verified === true }
   } catch {
     return null
   }
+}
+
+/** True when a Google session cookie is present on a configured install. */
+export function hasGoogleSessionCookie(env: Env, request: Request): boolean {
+  if (!googleConfigured(env)) return false
+  return Boolean(readCookie(request, sessionCookieName(request)))
 }
 
 export function googleStart(c: Context<AppContext>): Response {
@@ -185,12 +194,40 @@ export async function googleCallback(c: Context<AppContext>): Promise<Response> 
     console.error('google userinfo failed', infoResponse.status)
     return redirect('/?signin=failed', [cleared])
   }
-  const info = (await infoResponse.json()) as { sub?: string; name?: string; email?: string; picture?: string }
+  const info = (await infoResponse.json()) as { sub?: string; name?: string; email?: string; picture?: string; email_verified?: boolean }
   if (!info.sub) return redirect('/?signin=failed', [cleared])
 
-  // Namespaced so a Google identity can never collide with, or be merged into,
-  // a Freebuff account that happens to share an email address.
-  const session = await signSession(env, { sub: `google:${info.sub}`, name: info.name, email: info.email, picture: info.picture, exp: Date.now() + SESSION_TTL_MS })
+  // Namespaced so a Google identity can never collide with, or be silently
+  // merged into, a Freebuff account that happens to share an email address.
+  const sub = `google:${info.sub}`
+  if (c.env.DB && info.email) {
+    // A verified Google address may keep an account that was itself created by
+    // a provider (no password). It must never take over a password account:
+    // registration does not verify addresses, so whoever typed this address
+    // first could otherwise inherit the Google owner's account. Refuse instead
+    // of creating a second identity with the same address.
+    try {
+      const db = c.env.DB
+      // The callback can be the first request on a fresh isolate, before any
+      // /api handler has migrated this database.
+      await ensureSchema(db)
+      const linked = await db.prepare(`SELECT owner_sub FROM identity_links WHERE provider_sub = ?`).bind(sub).first<{ owner_sub: string }>()
+      const own = linked ?? (await db.prepare(`SELECT owner_sub FROM users WHERE owner_sub = ?`).bind(sub).first<{ owner_sub: string }>())
+      if (!own) {
+        const clash = await db
+          .prepare(`SELECT 1 AS n FROM users WHERE email_key = ? AND password_hash IS NOT NULL AND owner_sub <> ?`)
+          .bind(info.email.trim().toLowerCase(), sub)
+          .first<{ n: number }>()
+        if (clash) return redirect('/signin?notice=password_account', [cleared, cookie(sessionCookieName(request), '', request, 0)])
+      }
+    } catch (error) {
+      // A missing table during the first request after a deploy must not break
+      // Google sign-in; the session is still namespaced and safe on its own.
+      console.error('google identity lookup failed', error)
+    }
+  }
+
+  const session = await signSession(env, { sub, name: info.name, email: info.email, picture: info.picture, email_verified: info.email_verified === true, exp: Date.now() + SESSION_TTL_MS })
   return redirect(returnTo, [cleared, cookie(sessionCookieName(request), session, request, Math.floor(SESSION_TTL_MS / 1000))])
 }
 

@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { Link } from 'react-router'
 
 import type { Deck } from '../../shared/types'
-import { relativeTime } from '../lib/format'
+import { deckAccent, deckGradient, relativeTime } from '../lib/format'
 
 export function ProgressRing({ value, size = 44, stroke = 4, hue }: { value: number; size?: number; stroke?: number; hue: number }) {
   const r = (size - stroke) / 2
@@ -15,7 +15,7 @@ export function ProgressRing({ value, size = 44, stroke = 4, hue }: { value: num
         cy={size / 2}
         r={r}
         fill="none"
-        stroke={`hsl(${hue} 70% 55%)`}
+        stroke={deckAccent(hue)}
         strokeWidth={stroke}
         strokeLinecap="round"
         strokeDasharray={c}
@@ -32,8 +32,12 @@ export function DeckCard({ deck, index = 0 }: { deck: Deck; index?: number }) {
     <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: index * 0.04, ease: [0.22, 1, 0.36, 1] }}>
       <Link to={`/decks/${deck.id}`} className="group flex h-[168px] flex-col rounded-card bg-surface p-5 shadow-card transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-pop">
         <div className="flex items-start justify-between gap-4">
-          <span className="grid size-10 place-items-center rounded-[13px] text-[15px] font-bold text-white" style={{ background: `linear-gradient(135deg, hsl(${deck.hue} 70% 60%), hsl(${deck.hue + 30} 70% 48%))` }}>
-            {deck.title[0]?.toUpperCase()}
+          <span className="grid size-10 place-items-center overflow-hidden rounded-[13px] text-[15px] font-bold text-white shadow-[0_8px_18px_-12px_rgb(6_23_51/0.9)]" style={{ background: deckGradient(deck.hue) }}>
+            {deck.hasCover ? (
+              <img src={`/api/decks/${deck.id}/cover?v=${deck.coverVersion ?? ''}`} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+            ) : (
+              deck.title[0]?.toUpperCase()
+            )}
           </span>
           <div className="relative grid place-items-center">
             <ProgressRing value={deck.mastery} hue={deck.hue} />

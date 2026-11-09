@@ -5,7 +5,7 @@ import { peekBody, signatureOk } from '../files'
 import { CARD_SELECT, DECK_SELECT, hueFor, id, mapCard, mapDeck, mapSession, now, requireAdmin } from '../db'
 import type { AppContext } from '../env'
 import type { SessionResult, StudyMode } from '../../shared/types'
-import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
+import { MAX_ATTACHMENT_BYTES, MAX_COVER_BYTES } from '../../shared/types'
 
 export const decks = new Hono<AppContext>()
 
@@ -83,7 +83,7 @@ decks.patch('/:id', async (c) => {
 decks.delete('/:id', async (c) => {
   const db = c.get('db')
   const deckId = c.req.param('id')
-  const deck = await db.prepare(`SELECT id FROM decks WHERE id = ?`).bind(deckId).first()
+  const deck = await db.prepare(`SELECT id, cover_image_key FROM decks WHERE id = ?`).bind(deckId).first<{ id: string; cover_image_key: string | null }>()
   if (!deck) return c.json({ error: 'Not found.' }, 404)
   const keys = await db.prepare(`SELECT image_key FROM cards WHERE deck_id = ? AND image_key IS NOT NULL`).bind(deckId).all<{ image_key: string }>()
   await db.batch([
@@ -92,7 +92,9 @@ decks.delete('/:id', async (c) => {
     db.prepare(`DELETE FROM cards WHERE deck_id = ?`).bind(deckId),
     db.prepare(`DELETE FROM decks WHERE id = ?`).bind(deckId),
   ])
-  if (c.env.FILES && keys.results.length) await c.env.FILES.delete(keys.results.map((r) => r.image_key))
+  const remove = keys.results.map((r) => r.image_key)
+  if (deck.cover_image_key) remove.push(deck.cover_image_key)
+  if (c.env.FILES && remove.length) await c.env.FILES.delete(remove)
   return privateJson(c, { ok: true })
 })
 
@@ -173,6 +175,7 @@ const DOCUMENT_TYPES = new Set([
 ])
 const ATTACHMENT_TYPES = new Set([...IMAGE_TYPES, ...DOCUMENT_TYPES])
 const MAX_ATTACHMENT_MB = Math.round(MAX_ATTACHMENT_BYTES / (1024 * 1024))
+const MAX_COVER_MB = Math.round(MAX_COVER_BYTES / (1024 * 1024))
 
 /** A path-free, printable, header-safe filename. */
 function safeFileName(raw: string | undefined): string {
@@ -189,6 +192,88 @@ function safeFileName(raw: string | undefined): string {
     .slice(0, 120)
   return clean || 'attachment'
 }
+
+decks.put('/:id/cover', async (c) => {
+  const bucket = c.env.FILES
+  if (!bucket) return c.json({ error: 'storage_missing', message: 'No file storage is attached yet. Add R2 storage named FILES and redeploy.' }, 503)
+  const db = c.get('db')
+  const deckId = c.req.param('id')
+  const deck = await db.prepare(`SELECT owner_sub, cover_image_key FROM decks WHERE id = ?`).bind(deckId).first<{ owner_sub: string; cover_image_key: string | null }>()
+  if (!deck) return c.json({ error: 'Not found.' }, 404)
+
+  const type = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase()
+  if (!IMAGE_TYPES.has(type)) {
+    return c.json({ error: 'unsupported_type', message: 'A deck cover has to be a PNG, JPEG, WebP or GIF image.' }, 415)
+  }
+  const size = Number(c.req.header('content-length') ?? 0)
+  if (!Number.isFinite(size) || size <= 0) return c.json({ error: 'empty_file', message: 'That image looks empty.' }, 400)
+  if (size > MAX_COVER_BYTES) return c.json({ error: 'file_too_large', message: `Cover images are limited to ${MAX_COVER_MB} MB.` }, 413)
+  const { head, body } = await peekBody(c.req.raw, 16)
+  if (!body) return c.json({ error: 'empty_file', message: 'That image looks empty.' }, 400)
+  if (!signatureOk(type, head)) {
+    return c.json({ error: 'invalid_signature', message: 'That file does not contain what its type says it does. Re-export the image and try again.' }, 415)
+  }
+
+  const name = safeFileName(c.req.header('x-file-name'))
+  // Keep the object under the deck owner's namespace, even when a different
+  // admin replaces the cover, so it is removed with that account's library.
+  const key = `${deck.owner_sub}/decks/${deckId}/cover/${crypto.randomUUID()}`
+  const fixed = new FixedLengthStream(size)
+  void body.pipeTo(fixed.writable).catch((error) => console.error('cover relay failed', error))
+  try {
+    await bucket.put(key, fixed.readable, { httpMetadata: { contentType: type } })
+  } catch (error) {
+    console.error('cover upload failed', error)
+    return c.json({ error: 'storage_unavailable', message: 'Storage could not accept that image — the space allocated to this site may be full.' }, 507)
+  }
+  await db
+    .prepare(`UPDATE decks SET cover_image_key = ?, cover_file_name = ?, cover_file_size = ?, cover_file_type = ?, updated_at = ? WHERE id = ?`)
+    .bind(key, name, size, type, now(), deckId)
+    .run()
+  if (deck.cover_image_key) await bucket.delete(deck.cover_image_key)
+  return privateJson(c, { ok: true, cover: { name, size, type } })
+})
+
+decks.delete('/:id/cover', async (c) => {
+  const db = c.get('db')
+  const deckId = c.req.param('id')
+  const deck = await db.prepare(`SELECT cover_image_key FROM decks WHERE id = ?`).bind(deckId).first<{ cover_image_key: string | null }>()
+  if (!deck) return c.json({ error: 'Not found.' }, 404)
+  await db.prepare(`UPDATE decks SET cover_image_key = NULL, cover_file_name = NULL, cover_file_size = NULL, cover_file_type = NULL, updated_at = ? WHERE id = ?`).bind(now(), deckId).run()
+  if (deck.cover_image_key && c.env.FILES) await c.env.FILES.delete(deck.cover_image_key)
+  return privateJson(c, { ok: true })
+})
+
+decks.get('/:id/cover', async (c) => {
+  const bucket = c.env.FILES
+  if (!bucket) return c.json({ error: 'Not found.' }, 404)
+  const owner = c.get('user').sub
+  const deck = await c.get('db')
+    .prepare(`SELECT cover_image_key, cover_file_name, cover_file_type FROM decks WHERE id = ? AND (owner_sub = ? OR shared = 1)`)
+    .bind(c.req.param('id'), owner)
+    .first<{ cover_image_key: string | null; cover_file_name: string | null; cover_file_type: string | null }>()
+  if (!deck?.cover_image_key) return c.json({ error: 'Not found.' }, 404)
+  const object = await bucket.get(deck.cover_image_key)
+  if (!object) return c.json({ error: 'Not found.' }, 404)
+  // Only the raster types a cover may be uploaded as are rendered inline. A
+  // restored or legacy object with another content type is a download, never
+  // an HTML/SVG document on this origin.
+  const storedType = object.httpMetadata?.contentType ?? deck.cover_file_type ?? ''
+  const type = IMAGE_TYPES.has(storedType) ? storedType : 'application/octet-stream'
+  const disposition = type.startsWith('image/') ? 'inline' : 'attachment'
+  const name = deck.cover_file_name ?? 'cover'
+  const asciiName = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '') || 'cover'
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': type,
+      'Content-Length': String(object.size),
+      'Content-Disposition': `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control': 'private, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+    },
+  })
+})
 
 decks.put('/:id/cards/:cardId/file', async (c) => {
   const bucket = c.env.FILES
@@ -285,14 +370,17 @@ decks.post('/:id/sessions', async (c) => {
   const deckId = c.req.param('id')
   const input = await c.req.json<{ mode?: StudyMode; results?: SessionResult[]; durationMs?: number }>()
   if (!input.mode || !MODES.has(input.mode)) return c.json({ error: 'Unknown study mode.' }, 400)
-  const results = (input.results ?? []).filter((r) => typeof r.cardId === 'string' && typeof r.correct === 'boolean').slice(0, 500)
+  // One answer per card. A repeated id used to be counted twice in both the
+  // score and the mastery update, so a client could inflate its own progress.
+  const results = [...new Map((input.results ?? []).filter((r) => typeof r.cardId === 'string' && typeof r.correct === 'boolean').map((r) => [r.cardId, r])).values()].slice(0, 500)
   if (results.length === 0) return c.json({ error: 'Nothing to record.' }, 400)
   const deck = await db.prepare(`SELECT id FROM decks WHERE id = ? AND (owner_sub = ? OR shared = 1)`).bind(deckId, owner).first()
   if (!deck) return c.json({ error: 'Not found.' }, 404)
-  const ids = [...new Set(results.map((r) => r.cardId))]
+  // Read every card in the deck rather than putting one SQL parameter per
+  // answer: D1 caps bound parameters, so a 500-card deck used to fail here.
   const owned = await db
-    .prepare(`SELECT c.id, p.correct, p.incorrect, p.streak, p.mastery FROM cards c LEFT JOIN card_progress_v2 p ON p.card_id = c.id AND p.owner_sub = ? WHERE c.deck_id = ? AND c.id IN (${ids.map(() => '?').join(',')})`)
-    .bind(owner, deckId, ...ids)
+    .prepare(`SELECT c.id, p.correct, p.incorrect, p.streak, p.mastery FROM cards c LEFT JOIN card_progress_v2 p ON p.card_id = c.id AND p.owner_sub = ? WHERE c.deck_id = ?`)
+    .bind(owner, deckId)
     .all<{ id: string; correct: number | null; incorrect: number | null; streak: number | null; mastery: number | null }>()
   const byId = new Map(owned.results.map((r) => [r.id, r]))
 

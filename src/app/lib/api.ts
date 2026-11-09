@@ -1,6 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { AuthStatus, Card, ConsentStatus, Deck, Me, Session, SessionResult, Stats, Storage, StudyMode } from '../../shared/types'
+import type {
+  AdminUsersResponse,
+  AuthStatus,
+  Card,
+  ConsentStatus,
+  Deck,
+  Me,
+  NoteFile,
+  Profile,
+  PublicLibrary,
+  ResetRequest,
+  Session,
+  SessionResult,
+  Stats,
+  Storage,
+  StudyMode,
+} from '../../shared/types'
 
 export class ApiError extends Error {
   constructor(
@@ -46,6 +62,20 @@ export const useDeck = (id: string | undefined) =>
   })
 export const useStats = () => useQuery({ queryKey: ['stats'], queryFn: () => api<Stats>('/stats') })
 export const useStorage = () => useQuery({ queryKey: ['storage'], queryFn: () => api<Storage>('/storage') })
+
+/** The read-only classwork library. Available to every signed-in account. */
+export const useNotes = () =>
+  useQuery({ queryKey: ['notes'], queryFn: () => api<{ files: NoteFile[] }>('/notes'), staleTime: 30_000 })
+
+/** Counts and the three newest titles, for the signed-out landing page. */
+export const usePublicLibrary = () =>
+  useQuery({ queryKey: ['public-library'], queryFn: () => api<PublicLibrary>('/public/library'), staleTime: 60_000, retry: false })
+
+/** Each key segment is encoded, so an R2 key with slashes stays one path tail. */
+export function noteUrl(key: string, download = false) {
+  const path = key.split('/').map(encodeURIComponent).join('/')
+  return `/api/notes/file/${path}${download ? '?download=1' : ''}`
+}
 export const useConsent = () =>
   useQuery({ queryKey: ['consent'], queryFn: () => api<ConsentStatus>('/legal/status'), retry: false, staleTime: 0 })
 
@@ -76,7 +106,8 @@ export async function downloadMyData(): Promise<string> {
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
-  URL.revokeObjectURL(url)
+  // Give Safari a moment to start the download before releasing the URL.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   return name
 }
 
@@ -116,14 +147,16 @@ export function useInvalidate() {
 export function useApiMutation<TInput, TResult>(
   run: (input: TInput) => Promise<TResult>,
   invalidates: string[],
-  options?: { onSuccess?: (result: TResult, input: TInput) => void; onError?: (error: Error) => void },
+  options?: { onSuccess?: (result: TResult, input: TInput) => void | Promise<void>; onError?: (error: Error) => void },
 ) {
   const invalidate = useInvalidate()
   return useMutation({
     mutationFn: run,
     onSuccess: async (result, input) => {
       await invalidate(...invalidates)
-      options?.onSuccess?.(result, input)
+      // Await this so a create flow can finish its follow-up upload before the
+      // mutation leaves the pending state.
+      await options?.onSuccess?.(result, input)
     },
     onError: (error) => options?.onError?.(error),
   })
@@ -151,6 +184,11 @@ const EXTENSION_TYPES: Record<string, string> = {
   md: 'text/markdown',
   rtf: 'application/rtf',
   epub: 'application/epub+zip',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
 }
 
 // The file is the request body, so the Worker streams it straight into R2
@@ -177,4 +215,75 @@ export async function uploadCardAttachment(deckId: string, cardId: string, file:
     body: file,
     headers: { 'content-type': type, 'x-file-name': encodeURIComponent(file.name) },
   })
+}
+
+/** One cover per deck; replacing it removes the previous R2 object. */
+export async function uploadDeckCover(deckId: string, file: File) {
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+  const type = file.type || EXTENSION_TYPES[extension] || 'application/octet-stream'
+  await api(`/decks/${deckId}/cover`, {
+    method: 'PUT',
+    body: file,
+    headers: { 'content-type': type, 'x-file-name': encodeURIComponent(file.name) },
+  })
+}
+
+export async function deleteDeckCover(deckId: string) {
+  await api(`/decks/${deckId}/cover`, { method: 'DELETE' })
+}
+
+// ---------------------------------------------------------------------------
+// Identity: registration, username/password sign-in, profile, admin roster
+// ---------------------------------------------------------------------------
+
+export function registerAccount(input: { fullName: string; username: string; email: string; password: string; confirmPassword: string }) {
+  return api<{ ok: true; user: { sub: string; username: string; studentId: string } }>('/auth/register', { method: 'POST', json: input })
+}
+
+export function loginWithPassword(input: { identifier: string; password: string }) {
+  return api<{ ok: true; user: { sub: string; username: string } }>('/auth/login', { method: 'POST', json: input })
+}
+
+export function logoutPassword() {
+  return api<{ ok: true }>('/auth/logout', { method: 'POST' })
+}
+
+export function requestPasswordReset(identifier: string) {
+  return api<{ ok: true; mail: boolean }>('/auth/password/request', { method: 'POST', json: { identifier } })
+}
+
+export function resetPassword(input: { token: string; password: string; confirmPassword: string }) {
+  return api<{ ok: true }>('/auth/password/reset', { method: 'POST', json: input })
+}
+
+export const useProfile = () => useQuery({ queryKey: ['profile'], queryFn: () => api<Profile>('/profile'), staleTime: 30_000 })
+
+export function updateProfile(input: { fullName: string }) {
+  return api<{ ok: true; fullName: string }>('/profile', { method: 'PATCH', json: input })
+}
+
+export function changeUsername(username: string) {
+  return api<{ ok: true; username: string }>('/profile/username', { method: 'POST', json: { username } })
+}
+
+export function changePassword(input: { currentPassword?: string; password: string; confirmPassword: string }) {
+  return api<{ ok: true }>('/profile/password', { method: 'POST', json: input })
+}
+
+export const useAdminUsers = (query: string, page: number) =>
+  useQuery({
+    queryKey: ['admin-users', query, page],
+    queryFn: () => api<AdminUsersResponse>(`/admin/users?q=${encodeURIComponent(query)}&page=${page}`),
+    staleTime: 15_000,
+  })
+
+export const useResetRequests = (enabled: boolean) =>
+  useQuery({ queryKey: ['reset-requests'], queryFn: () => api<{ requests: ResetRequest[] }>('/admin/reset-requests'), enabled, staleTime: 15_000 })
+
+export function setAccountStatus(sub: string, status: 'active' | 'suspended') {
+  return api<{ ok: true; status: string }>(`/admin/users/${encodeURIComponent(sub)}/status`, { method: 'POST', json: { status } })
+}
+
+export function issueResetLink(id: string) {
+  return api<{ ok: true; path: string; expiresInMinutes: number }>(`/admin/reset-requests/${encodeURIComponent(id)}/link`, { method: 'POST' })
 }

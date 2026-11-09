@@ -63,7 +63,8 @@ export function Match() {
 
   useEffect(() => {
     if (isError) navigate('/')
-  }, [isError, navigate])
+    if (data && data.cards.length < 3) navigate(`/decks/${id}`, { replace: true })
+  }, [data, id, isError, navigate])
 
   function restart() {
     setRound((r) => r + 1)
@@ -75,7 +76,7 @@ export function Match() {
     setElapsed(0)
   }
 
-  if (isLoading || !data) {
+  if (isLoading || !data || data.cards.length < 3) {
     return (
       <div className="grid min-h-screen place-items-center">
         <Spinner />

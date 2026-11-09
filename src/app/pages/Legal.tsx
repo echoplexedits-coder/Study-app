@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { CONTACT_TOPICS, DISCLAIMER, LEGAL_PAGES, POLICY_EFFECTIVE, POLICY_VERSION } from '../../shared/legal'
+import { CONTACT_EMAIL, CONTACT_TOPICS, DISCLAIMER, LEGAL_PAGES, POLICY_EFFECTIVE, POLICY_VERSION } from '../../shared/legal'
 import { LegalFooter } from '../components/LegalFooter'
 import { Logo } from '../components/Shell'
 import { Input, Textarea } from '../components/ui'
@@ -177,7 +177,9 @@ const TERMS: Section[] = [
   },
   {
     h: 'Contact',
-    p: [`Questions about these terms go through the Contact page. That form is the operator's contact channel; no postal address, phone line or support inbox is operated for this app.`],
+    p: [
+      `Questions about these terms go through the Contact page, or by email to ${CONTACT_EMAIL}. Those are the operator's two contact channels; no postal address or phone line is operated for this app.`,
+    ],
   },
 ]
 
@@ -186,7 +188,7 @@ const PRIVACY: Section[] = [
     h: 'Who is responsible for your data',
     p: [
       `myclassroom is run by an individual developer. For the personal data described here, the operator of this app is the person who decides how it is used. No company, school or institution is involved in running it.`,
-      `Privacy questions, access requests and complaints go through the Contact page, using the privacy topic. No Data Protection Officer has been appointed because this is a small, individually operated app; that is a limitation you should know about.`,
+      `Privacy questions, access requests and complaints go through the Contact page with the privacy topic, or by email to ${CONTACT_EMAIL}. No Data Protection Officer has been appointed because this is a small, individually operated app; that is a limitation you should know about.`,
     ],
   },
   {
@@ -479,8 +481,15 @@ export function ContactPage() {
   return (
     <LegalShell
       title="Contact"
-      intro="There is no invented support email, phone number or postal address for this app. This form is the real channel: messages are stored in the app's database and read by the operator in the admin inbox."
+      intro={`Write through the form below or email ${CONTACT_EMAIL}. Form messages are stored in the app's database and read by the operator in the admin inbox; email arrives in the same mailbox. No phone number or postal address is operated for this app.`}
     >
+      <p className="mt-6 text-[14px] leading-relaxed text-muted">
+        Prefer email? Write to{' '}
+        <a className="font-medium text-accent hover:text-accent-deep" href={`mailto:${CONTACT_EMAIL}`}>
+          {CONTACT_EMAIL}
+        </a>
+        .
+      </p>
       <ContactForm />
       <section className="mt-10">
         <h2 className="text-[17px] font-semibold tracking-[-0.01em]">What to include</h2>

@@ -33,6 +33,13 @@ const ALLOWED_TYPES = new Set([
 
 const MAX_MB = Math.round(MAX_ATTACHMENT_BYTES / (1024 * 1024))
 
+// Card attachments and deck covers also live in FILES, but they are not
+// classwork. Their keys have a stable shape, so the admin file list can skip
+// them instead of showing someone's private flashcard image as a handout.
+const CARD_OBJECT = /^[^/]+\/cards\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/i
+const COVER_OBJECT = /^[^/]+\/decks\/[0-9a-f-]{36}\/cover\/[0-9a-f-]{36}$/i
+const isLibraryObject = (key: string) => CARD_OBJECT.test(key) || COVER_OBJECT.test(key)
+
 /** One R2 key segment: no separators, no control characters, no `..` runs. */
 function segment(value: unknown, fallback: string): string {
   const clean = String(value ?? '')
@@ -51,8 +58,11 @@ adminFiles.get('/admin/files', requireAdmin, async (c) => {
   const files: { name: string; size: number; contentType: string | null; uploadedAt: number }[] = []
   let cursor: string | undefined
   while (true) {
-    const result = cursor ? await c.env.FILES.list({ cursor }) : await c.env.FILES.list()
+    const result = cursor
+      ? await c.env.FILES.list({ cursor, include: ['httpMetadata'] })
+      : await c.env.FILES.list({ include: ['httpMetadata'] })
     for (const entry of result.objects) {
+      if (isLibraryObject(entry.key)) continue
       files.push({
         name: entry.key,
         size: entry.size,

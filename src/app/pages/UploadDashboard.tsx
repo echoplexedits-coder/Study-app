@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Archive, FileText, Image, Trash2, Upload, X } from 'lucide-react'
 import { Button, ConfirmDialog, Input, useToast } from '../components/ui'
@@ -49,6 +49,30 @@ function formatDate(ts: number): string {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+interface ParsedFile {
+  className: string
+  subject: string
+  date: string
+  label: string
+}
+
+// Keys are stored as class/subject/date/name-uuid. Pull the class out so it can
+// be a section heading, and drop that class prefix and the uuid from the row.
+function parseFileKey(key: string): ParsedFile {
+  const parts = key.split('/')
+  const stored = parts.pop() ?? key
+  const date = parts.length >= 3 ? (parts.pop() ?? '') : ''
+  const subject = parts.length >= 2 ? (parts.pop() ?? '') : ''
+  const className = parts.join('/') || 'Unsorted'
+  const label = stored.replace(/-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, '') || 'Untitled'
+  return {
+    className,
+    subject: subject === 'General' ? '' : subject,
+    date: date === 'undated' ? '' : date,
+    label,
+  }
+}
+
 export function UploadDashboard() {
   const toast = useToast()
   const [files, setFiles] = useState<UploadedFile[]>([])
@@ -61,6 +85,22 @@ export function UploadDashboard() {
   const [uploadingFile, setUploadingFile] = useState<File | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
+  const sections = useMemo(() => {
+    const grouped = new Map<string, { file: UploadedFile; meta: ParsedFile }[]>()
+    for (const file of files) {
+      const meta = parseFileKey(file.name)
+      const entries = grouped.get(meta.className) ?? []
+      entries.push({ file, meta })
+      grouped.set(meta.className, entries)
+    }
+    return [...grouped.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([className, entries]) => ({
+        className,
+        entries: entries.sort((a, b) => b.file.uploadedAt - a.file.uploadedAt),
+      }))
+  }, [files])
+
   const loadFiles = async () => {
     try {
       const body = await api<{ files: UploadedFile[] }>('/admin/files')
@@ -69,6 +109,12 @@ export function UploadDashboard() {
       setFiles([])
     }
   }
+
+  // Load the existing files when the dashboard mounts. Without this the list
+  // stayed empty until someone uploaded or deleted a file in the same visit.
+  useEffect(() => {
+    void loadFiles()
+  }, [])
 
   const uploadFile = async () => {
     if (!uploadingFile || !uploadingName.trim()) return
@@ -83,6 +129,8 @@ export function UploadDashboard() {
       await api('/admin/files', { method: 'POST', body: form })
       toast('File uploaded')
       setUploadingFile(null)
+      const input = document.getElementById('classwork-file') as HTMLInputElement | null
+      if (input) input.value = ''
       setUploadingName('')
       setUploadingClass('')
       setUploadingSubject('')
@@ -199,26 +247,39 @@ export function UploadDashboard() {
         {files.length === 0 && (
           <p className="mt-2 text-[12.5px] text-faint">No classwork uploaded yet.</p>
         )}
-        <ul className="mt-2 divide-y divide-line">
-          {files.map((file) => (
-            <li key={file.name} className="flex items-center gap-3 py-3">
-              <span className="shrink-0">{fileIcon(file.contentType)}</span>
-              <div className="min-w-0 flex-1 min-w-0">
-                <p className="truncate text-[13.5px] font-medium">{file.name}</p>
-                <p className="text-[12px] text-muted">{bytes(file.size)} · {formatDate(file.uploadedAt)}</p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                loading={deleting === file.name}
-                onClick={() => setConfirmDelete(file.name)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </li>
-          ))}
-        </ul>
+        {sections.map(({ className, entries }) => (
+          <section key={className} className="mt-5 first:mt-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <h4 className="text-[13px] font-semibold">{className}</h4>
+              <span className="text-[12px] text-faint">
+                {entries.length} {entries.length === 1 ? 'file' : 'files'}
+              </span>
+            </div>
+            <ul className="mt-1 divide-y divide-line">
+              {entries.map(({ file, meta }) => (
+                <li key={file.name} className="flex items-center gap-3 py-3">
+                  <span className="shrink-0">{fileIcon(file.contentType)}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13.5px] font-medium">{meta.label}</p>
+                    <p className="truncate text-[12px] text-muted">
+                      {[meta.subject, meta.date, bytes(file.size)].filter(Boolean).join(' · ')} · {formatDate(file.uploadedAt)}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Delete ${meta.label}`}
+                    loading={deleting === file.name}
+                    onClick={() => setConfirmDelete(file.name)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
       <ConfirmDialog
         open={confirmDelete !== null}

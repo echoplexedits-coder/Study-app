@@ -42,6 +42,10 @@ export async function consentFor(db: D1Database, sub: string): Promise<{ policy_
  */
 export const requireConsent: MiddlewareHandler<AppContext> = async (c, next) => {
   if (c.req.method === 'GET' || c.req.method === 'HEAD' || c.req.path.startsWith('/api/legal/')) return next()
+  // Identity steps are not content changes: claiming a username and setting a
+  // password have to work before the consent screen can even be reached,
+  // otherwise a new account would be stuck between the two gates.
+  if (c.req.path.startsWith('/api/profile')) return next()
   const row = await consentFor(c.get('db'), c.get('user').sub)
   if (!row || row.policy_version !== POLICY_VERSION) {
     return c.json(
@@ -169,9 +173,12 @@ legal.post('/legal/delete-account', async (c) => {
   const sub = user.sub
   const email = user.email?.trim().toLowerCase() ?? null
   const keys = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND image_key IS NOT NULL`).bind(sub).all<{ image_key: string }>()
+  const deckRows = await db.prepare(`SELECT id, cover_image_key FROM decks WHERE owner_sub = ?`).bind(sub).all<{ id: string; cover_image_key: string | null }>()
+  const deckIds = deckRows.results.map((row) => row.id)
+  const coverKeys = deckRows.results.flatMap((row) => (row.cover_image_key ? [row.cover_image_key] : []))
   const counts = {
-    decks: Number((await db.prepare(`SELECT COUNT(*) AS n FROM decks WHERE owner_sub = ?`).bind(sub).first<{ n: number }>())?.n ?? 0),
-    cards: keys.results.length ? keys.results.length : 0,
+    decks: deckIds.length,
+    attachments: keys.results.length + coverKeys.length,
     sessions: Number((await db.prepare(`SELECT COUNT(*) AS n FROM sessions WHERE owner_sub = ?`).bind(sub).first<{ n: number }>())?.n ?? 0),
   }
 
@@ -187,24 +194,35 @@ legal.post('/legal/delete-account', async (c) => {
     db.prepare(`UPDATE content_reports SET reporter_sub = NULL, reporter_email = NULL WHERE reporter_sub = ?`).bind(sub),
   ]
   if (email) statements.push(db.prepare(`DELETE FROM roles WHERE lower(email) = ?`).bind(email))
+  // Other accounts may have studied these decks. Their progress and sessions
+  // reference the deck by id and would otherwise survive the deletion.
+  for (let i = 0; i < deckIds.length; i += 40) {
+    const chunk = deckIds.slice(i, i + 40)
+    const marks = chunk.map(() => '?').join(',')
+    statements.push(
+      db.prepare(`DELETE FROM card_progress_v2 WHERE deck_id IN (${marks})`).bind(...chunk),
+      db.prepare(`DELETE FROM sessions WHERE deck_id IN (${marks})`).bind(...chunk),
+    )
+  }
   await db.batch(statements)
 
   const bucket = c.env.FILES
-  if (bucket && keys.results.length) {
-    for (let i = 0; i < keys.results.length; i += 100) {
+  const remove = keys.results.map((row) => row.image_key).concat(coverKeys)
+  if (bucket && remove.length) {
+    for (let i = 0; i < remove.length; i += 100) {
       try {
-        await bucket.delete(keys.results.slice(i, i + 100).map((row) => row.image_key))
+        await bucket.delete(remove.slice(i, i + 100))
       } catch (error) {
         console.error('account deletion: attachment cleanup failed', error)
       }
     }
   }
 
-  await logAudit(db, user, 'account.delete', sub, `${counts.decks} decks, ${counts.cards} attachments, ${counts.sessions} sessions`)
+  await logAudit(db, user, 'account.delete', sub, `${counts.decks} decks, ${counts.attachments} attachments, ${counts.sessions} sessions`)
   // Security logs keep the action trail but drop the email address.
   await db.prepare(`UPDATE audit_log SET actor_email = NULL WHERE actor_sub = ?`).bind(sub).run()
 
-  return privateJson(c, { ok: true, deleted: { decks: counts.decks, attachments: counts.cards, sessions: counts.sessions } })
+  return privateJson(c, { ok: true, deleted: { decks: counts.decks, attachments: counts.attachments, sessions: counts.sessions } })
 })
 
 legal.post('/legal/report', async (c) => {

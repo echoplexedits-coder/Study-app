@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { DISCLAIMER, LEGAL_PAGES, REPORT_REASONS, TARGET_TYPES } from '../../shared/legal'
 import type { Me } from '../../shared/types'
 import { api, deleteAccount, downloadMyData, fileReport, requestDeletion, useConsent, useDecks } from '../lib/api'
+import { signOut } from '../lib/auth'
 import { Badge, Button, Dialog, Input, Textarea, useToast } from './ui'
 
 interface ReportRow {
@@ -341,9 +342,13 @@ function DeleteAccountDialog({ open, onClose, auth }: { open: boolean; onClose: 
   const [text, setText] = useState('')
   const remove = useMutation({
     mutationFn: () => deleteAccount(text),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       toast(`Deleted ${result.deleted.decks} decks and ${result.deleted.sessions} sessions`)
-      signOut(auth)
+      try {
+        await signOut(auth)
+      } catch (error) {
+        toast((error as Error).message, 'danger')
+      }
     },
     onError: (error) => toast((error as Error).message, 'danger'),
   })
@@ -376,23 +381,6 @@ function DeleteAccountDialog({ open, onClose, auth }: { open: boolean; onClose: 
   )
 }
 
-/** Signs out through the same endpoint the Settings button uses. */
-function signOut(auth: Me['capabilities']['auth']) {
-  if (auth === 'development') {
-    window.location.reload()
-    return
-  }
-  const form = document.createElement('form')
-  form.method = 'POST'
-  form.action = auth === 'google' ? '/auth/google/signout' : '/auth/freebuff/signout'
-  const returnTo = document.createElement('input')
-  returnTo.type = 'hidden'
-  returnTo.name = 'returnTo'
-  returnTo.value = '/'
-  form.appendChild(returnTo)
-  document.body.appendChild(form)
-  form.submit()
-}
 
 function AdminSafetyInbox() {
   const client = useQueryClient()

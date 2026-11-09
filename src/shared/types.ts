@@ -8,6 +8,10 @@ export type Role = 'admin' | 'student'
 // just under it. The body is streamed into R2, never buffered in memory.
 export const MAX_ATTACHMENT_BYTES = 90 * 1024 * 1024
 
+// A cover is loaded with the library, so it is kept much smaller than a file
+// that is only downloaded when someone opens a card.
+export const MAX_COVER_BYTES = 8 * 1024 * 1024
+
 export type StudyMode = 'flashcards' | 'learn' | 'match'
 
 export interface Deck {
@@ -19,6 +23,9 @@ export interface Deck {
   mastered: number
   mastery: number
   dueCount: number
+  hasCover: boolean
+  // Changes whenever the cover is replaced; used to bust the browser cache.
+  coverVersion: string | null
   lastStudiedAt: number | null
   createdAt: number
   updatedAt: number
@@ -57,7 +64,13 @@ export interface AuthStatus {
   database: boolean
   files: boolean
   google: boolean
+  /** Username/password accounts are available (needs the database). */
+  password: boolean
+  /** A transactional email provider is configured for reset links. */
+  mail: boolean
 }
+
+export type AccountStatus = 'active' | 'suspended'
 
 // The policy version a person accepted, and when. `accepted` is false when the
 // newest acceptance predates the current POLICY_VERSION.
@@ -69,11 +82,88 @@ export interface ConsentStatus {
   acceptedVersion: string | null
 }
 
+export interface MeUser {
+  /** Permanent internal id. Never shown as an editable value, never reused. */
+  sub: string
+  name?: string
+  email?: string
+  picture?: string
+  /** Unique, case-insensitive, owned by exactly one account. */
+  username: string | null
+  /** Student-facing identity, e.g. MC-2026-000124. */
+  studentId: string | null
+  /** True until the account claims a username (the onboarding gate). */
+  needsUsername: boolean
+  hasPassword: boolean
+  status: AccountStatus
+  createdAt: number
+}
+
 export interface Me {
-  user: { sub: string; name?: string; email?: string; picture?: string }
+  user: MeUser
   streak: number
   seeded: boolean
-  capabilities: { database: boolean; files: boolean; auth: 'freebuff' | 'google' | 'development'; google: boolean; role: Role; canEdit: boolean }
+  capabilities: {
+    database: boolean
+    files: boolean
+    auth: 'freebuff' | 'google' | 'development' | 'password'
+    google: boolean
+    role: Role
+    canEdit: boolean
+  }
+}
+
+/** The signed-in person's own account record (settings page). */
+export interface Profile {
+  sub: string
+  fullName: string | null
+  username: string | null
+  studentId: string | null
+  email: string | null
+  role: Role
+  status: AccountStatus
+  hasPassword: boolean
+  createdAt: number
+  usernameChangedAt: number | null
+}
+
+/** One answer from the live username checker. */
+export interface UsernameCheck {
+  username: string
+  state: 'available' | 'taken' | 'reserved' | 'invalid'
+  message: string
+  suggestions: string[]
+  own?: boolean
+}
+
+/** A row in the admin roster. Never contains a password or a session token. */
+export interface AdminUser {
+  sub: string
+  username: string | null
+  fullName: string | null
+  email: string | null
+  studentId: string | null
+  status: AccountStatus
+  role: Role
+  hasPassword: boolean
+  createdAt: number
+}
+
+export interface AdminUsersResponse {
+  users: AdminUser[]
+  counts: { total: number; admins: number; students: number; suspended: number }
+  page: number
+  pageSize: number
+}
+
+export interface ResetRequest {
+  id: string
+  sub: string | null
+  identifier: string
+  username: string | null
+  studentId: string | null
+  status: string
+  createdAt: number
 }
 
 export interface Storage {
@@ -97,4 +187,31 @@ export interface Stats {
 export interface SessionResult {
   cardId: string
   correct: boolean
+}
+
+/** One classwork document in the read-only notes library. */
+export interface NoteFile {
+  // The R2 object key. Never rendered; used to build the download URL.
+  key: string
+  name: string
+  className: string
+  subject: string
+  date: string
+  size: number
+  contentType: string | null
+  uploadedAt: number
+}
+
+/** The public, sign-in-free window used by the landing page. */
+export interface PublicLibrary {
+  notes: number
+  subjects: number
+  classes: number
+  recent: {
+    name: string
+    className: string
+    subject: string
+    contentType: string | null
+    uploadedAt: number
+  }[]
 }

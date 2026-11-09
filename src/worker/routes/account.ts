@@ -6,7 +6,8 @@ import { googleConfigured } from '../google'
 import type { AppContext } from '../env'
 import { clearProgress, clearUser, seedUser } from '../seed'
 import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
-import type { Me, Stats, Storage } from '../../shared/types'
+import type { AccountStatus, Me, Stats, Storage } from '../../shared/types'
+import { accountFor, nextStudentId } from '../identity'
 
 export const account = new Hono<AppContext>()
 
@@ -17,11 +18,29 @@ export const account = new Hono<AppContext>()
  */
 async function clearOwned(db: D1Database, owner: string, bucket?: R2Bucket) {
   const keys = await db.prepare(`SELECT image_key FROM cards WHERE owner_sub = ? AND image_key IS NOT NULL`).bind(owner).all<{ image_key: string }>()
+  const decks = await db.prepare(`SELECT id, cover_image_key FROM decks WHERE owner_sub = ?`).bind(owner).all<{ id: string; cover_image_key: string | null }>()
+  const deckIds = decks.results.map((row) => row.id)
   await clearUser(db, owner)
-  if (!bucket || keys.results.length === 0) return
+
+  // Students' progress and sessions point at the admin's decks by id, not by
+  // owner. Delete those rows too, or clearing the library leaves orphans that
+  // still count in a student's history.
+  for (let i = 0; i < deckIds.length; i += 40) {
+    const chunk = deckIds.slice(i, i + 40)
+    const marks = chunk.map(() => '?').join(',')
+    await db.batch([
+      db.prepare(`DELETE FROM card_progress_v2 WHERE deck_id IN (${marks})`).bind(...chunk),
+      db.prepare(`DELETE FROM sessions WHERE deck_id IN (${marks})`).bind(...chunk),
+    ])
+  }
+
+  if (!bucket) return
+  const remove = keys.results.map((row) => row.image_key)
+  for (const row of decks.results) if (row.cover_image_key) remove.push(row.cover_image_key)
+  if (remove.length === 0) return
   try {
-    for (let i = 0; i < keys.results.length; i += 100) {
-      await bucket.delete(keys.results.slice(i, i + 100).map((row) => row.image_key))
+    for (let i = 0; i < remove.length; i += 100) {
+      await bucket.delete(remove.slice(i, i + 100))
     }
   } catch (error) {
     console.error('library cleanup failed', error)
@@ -37,16 +56,35 @@ account.get('/me', async (c) => {
   const user = c.get('user')
   const db = c.get('db')
   const role = c.get('role')
-  let row = await db.prepare(`SELECT seeded_at FROM users WHERE owner_sub = ?`).bind(user.sub).first<{ seeded_at: number | null }>()
+  let row = await accountFor(db, user.sub)
   if (!row) {
-    await db.prepare(`INSERT INTO users (owner_sub, created_at) VALUES (?, ?)`).bind(user.sub, now()).run()
-    // Only the admin gets a furnished library; students study what is published.
-    if (role === 'admin') {
-      await seedUser(db, user.sub)
-      row = { seeded_at: now() }
-    } else {
-      row = { seeded_at: null }
-    }
+    // First visit: the permanent record is created here. The internal id
+    // (owner_sub) and the student-facing id are generated once, by the server,
+    // and no account can ever choose or change either of them.
+    const studentId = await nextStudentId(db)
+    await db
+      .prepare(
+        `INSERT INTO users (owner_sub, created_at, full_name, email, email_key, student_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'active') ON CONFLICT(owner_sub) DO NOTHING`,
+      )
+      .bind(user.sub, now(), user.name ?? null, user.email ?? null, user.email?.toLowerCase() ?? null, studentId)
+      .run()
+    row = await accountFor(db, user.sub)
+  }
+  // The provider stays the source of truth for the address, but a name the
+  // person edited in their profile is never overwritten by a later sign-in.
+  if (row && user.email && row.email_key !== user.email.toLowerCase()) {
+    await db.prepare(`UPDATE users SET email = ?, email_key = ? WHERE owner_sub = ?`).bind(user.email, user.email.toLowerCase(), user.sub).run()
+    row = { ...row, email: user.email, email_key: user.email.toLowerCase() }
+  }
+  if (row && !row.full_name && user.name) {
+    await db.prepare(`UPDATE users SET full_name = ? WHERE owner_sub = ?`).bind(user.name, user.sub).run()
+    row = { ...row, full_name: user.name }
+  }
+  // Only the admin gets a furnished library; students study what is published.
+  if (row && !row.seeded_at && role === 'admin') {
+    await seedUser(db, user.sub)
+    row = { ...row, seeded_at: now() }
   }
   // Everything the admin owns is the class library. Doing it here also brings
   // decks created before roles existed into view for everyone.
@@ -56,13 +94,24 @@ account.get('/me', async (c) => {
     if (Number(stale?.n)) await db.prepare(`UPDATE decks SET shared = 1 WHERE owner_sub = ? AND shared = 0`).bind(user.sub).run()
   }
   const body: Me = {
-    user: { sub: user.sub, name: user.name, email: user.email, picture: user.picture },
+    user: {
+      sub: user.sub,
+      name: row?.full_name ?? user.name,
+      email: row?.email ?? user.email,
+      picture: user.picture,
+      username: row?.username ?? null,
+      studentId: row?.student_id ?? null,
+      needsUsername: !row?.username_key,
+      hasPassword: Boolean(row?.password_hash),
+      status: (row?.status as AccountStatus | undefined) ?? 'active',
+      createdAt: row?.created_at ?? now(),
+    },
     streak: streakFrom(await sessionDays(db, user.sub)).current,
-    seeded: Boolean(row.seeded_at),
+    seeded: Boolean(row?.seeded_at),
     capabilities: {
       database: true,
       files: Boolean(c.env.FILES),
-      auth: user.sub.startsWith('google:') ? 'google' : authMode(c.env, c.req.raw) === 'freebuff' ? 'freebuff' : 'development',
+      auth: user.sub.startsWith('google:') ? 'google' : user.sub.startsWith('local:') ? 'password' : authMode(c.env, c.req.raw) === 'freebuff' ? 'freebuff' : 'development',
       google: googleConfigured(c.env),
       role,
       canEdit: role === 'admin',
@@ -128,12 +177,17 @@ account.get('/stats', async (c) => {
 })
 
 account.get('/storage', async (c) => {
-  const row = await c
-    .get('db')
-    .prepare(`SELECT COALESCE(SUM(file_size), 0) AS used, COUNT(file_size) AS files FROM cards WHERE owner_sub = ?`)
-    .bind(c.get('user').sub)
-    .first<{ used: number; files: number }>()
-  const body: Storage = { used: Number(row?.used ?? 0), files: Number(row?.files ?? 0), maxFileSize: MAX_ATTACHMENT_BYTES }
+  const db = c.get('db')
+  const owner = c.get('user').sub
+  const [cards, covers] = await Promise.all([
+    db.prepare(`SELECT COALESCE(SUM(file_size), 0) AS used, COUNT(file_size) AS files FROM cards WHERE owner_sub = ?`).bind(owner).first<{ used: number; files: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(cover_file_size), 0) AS used, COUNT(cover_file_size) AS files FROM decks WHERE owner_sub = ?`).bind(owner).first<{ used: number; files: number }>(),
+  ])
+  const body: Storage = {
+    used: Number(cards?.used ?? 0) + Number(covers?.used ?? 0),
+    files: Number(cards?.files ?? 0) + Number(covers?.files ?? 0),
+    maxFileSize: MAX_ATTACHMENT_BYTES,
+  }
   return privateJson(c, body)
 })
 

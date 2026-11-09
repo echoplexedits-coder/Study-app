@@ -22,25 +22,36 @@ export function Flashcards() {
   const [direction, setDirection] = useState<1 | -1>(1)
   const [startedAt, setStartedAt] = useState(Date.now())
   const advance = useRef<number | undefined>(undefined)
+  const locked = useRef(false)
 
   const card: Card | undefined = order[index]
   const done = Boolean(data) && index >= order.length
 
   function answer(correct: boolean) {
-    if (!card) return
+    // Ignore a second click or key press while the card is sliding out; the
+    // old code recorded the same card twice if two events arrived quickly.
+    if (!card || locked.current) return
+    locked.current = true
     setDirection(correct ? 1 : -1)
     setResults((r) => [...r, { cardId: card.id, correct }])
     setFlipped(false)
     window.clearTimeout(advance.current)
-    advance.current = window.setTimeout(() => setIndex((i) => i + 1), 40)
+    advance.current = window.setTimeout(() => {
+      locked.current = false
+      setIndex((i) => i + 1)
+    }, 40)
   }
 
   // A deleted or foreign deck sends you back instead of spinning forever.
   useEffect(() => {
     if (isError) navigate('/')
-  }, [isError, navigate])
+    // A deck with no cards has nothing to study; go back instead of opening an
+    // empty summary that cannot be recorded.
+    if (data && data.cards.length < 1) navigate(`/decks/${id}`, { replace: true })
+  }, [data, id, isError, navigate])
 
   function restart() {
+    locked.current = false
     setRound((r) => r + 1)
     setIndex(0)
     setResults([])
@@ -66,7 +77,7 @@ export function Flashcards() {
     }
   }, [])
 
-  if (isLoading || !data) {
+  if (isLoading || !data || data.cards.length < 1) {
     return (
       <div className="grid min-h-screen place-items-center">
         <Spinner />

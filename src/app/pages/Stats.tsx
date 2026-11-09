@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 import { Button, Card, Skeleton } from '../components/ui'
 import { useStats } from '../lib/api'
 import { cx } from '../lib/cx'
-import { relativeTime } from '../lib/format'
+import { deckAccent, relativeTime } from '../lib/format'
 
 export function StatsPage() {
   const { data, isLoading, isError } = useStats()
@@ -123,7 +123,7 @@ export function StatsPage() {
                   <span className="truncate font-medium">{d.title}</span>
                   <span className="tabular-nums text-muted">{d.mastery}%</span>
                   <span className="col-span-2 h-2 overflow-hidden rounded-[4px] bg-surface-2">
-                    <motion.span className="block h-full rounded-[4px]" style={{ background: `hsl(${d.hue} 70% 55%)` }} initial={{ width: 0 }} animate={{ width: `${d.mastery}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} />
+                    <motion.span className="block h-full rounded-[4px]" style={{ background: deckAccent(d.hue) }} initial={{ width: 0 }} animate={{ width: `${d.mastery}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} />
                   </span>
                 </Link>
               </li>

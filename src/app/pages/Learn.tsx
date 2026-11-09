@@ -42,18 +42,21 @@ export function Learn() {
   const [results, setResults] = useState<SessionResult[]>([])
   const [startedAt, setStartedAt] = useState(Date.now())
   const advance = useRef<number | undefined>(undefined)
+  const picking = useRef(false)
 
   const question = questions[index]
   const done = Boolean(data) && index >= questions.length
 
   function pick(option: number) {
-    if (picked !== null || !question) return
+    if (picked !== null || picking.current || !question) return
+    picking.current = true
     setPicked(option)
     const correct = option === question.answer
     setResults((r) => [...r, { cardId: question.card.id, correct }])
     window.clearTimeout(advance.current)
     advance.current = window.setTimeout(
       () => {
+        picking.current = false
         setPicked(null)
         setIndex((i) => i + 1)
       },
@@ -63,9 +66,11 @@ export function Learn() {
 
   useEffect(() => {
     if (isError) navigate('/')
-  }, [isError, navigate])
+    if (data && data.cards.length < 4) navigate(`/decks/${id}`, { replace: true })
+  }, [data, id, isError, navigate])
 
   function restart() {
+    picking.current = false
     setRound((r) => r + 1)
     setIndex(0)
     setPicked(null)
@@ -89,7 +94,7 @@ export function Learn() {
     }
   }, [])
 
-  if (isLoading || !data) {
+  if (isLoading || !data || data.cards.length < 4) {
     return (
       <div className="grid min-h-screen place-items-center">
         <Spinner />

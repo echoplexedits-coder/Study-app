@@ -16,6 +16,10 @@ export interface Env {
   // hidden and /auth/google/* answers 503, leaving Freebuff auth as the only way in.
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
+  // Optional transactional email for password-reset links. Without both values
+  // the reset request waits for an admin to hand out a one-time link instead.
+  RESEND_API_KEY?: string
+  MAIL_FROM?: string
 }
 
 export type Variables = {

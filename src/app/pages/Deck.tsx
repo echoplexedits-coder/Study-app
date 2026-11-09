@@ -1,14 +1,14 @@
-import { ArrowLeft, Brain, Check, FileText, Layers, MoreHorizontal, Paperclip, Pencil, Plus, Shuffle, Trash2, X } from 'lucide-react'
-import { useRef, useState, type FormEvent } from 'react'
+import { ArrowLeft, Brain, Check, FileText, ImagePlus, Layers, MoreHorizontal, Paperclip, Pencil, Plus, Shuffle, Trash2, X } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { ProgressRing } from '../components/DeckCard'
 import { Button, ConfirmDialog, Dialog, Field, FieldInput, FieldTextarea, Input, Menu, Spinner, useToast } from '../components/ui'
-import { api, uploadCardAttachment, useApiMutation, useDeck, useMe } from '../lib/api'
+import { api, deleteDeckCover, uploadCardAttachment, uploadDeckCover, useApiMutation, useDeck, useMe } from '../lib/api'
 import { cx } from '../lib/cx'
 import { relativeTime } from '../lib/format'
 import { parseCards } from './Library'
-import { MAX_ATTACHMENT_BYTES, type Card } from '../../shared/types'
+import { MAX_ATTACHMENT_BYTES, MAX_COVER_BYTES, type Card } from '../../shared/types'
 
 const modes = [
   { key: 'flashcards', label: 'Flashcards', detail: 'Flip through and sort what you know', icon: Layers },
@@ -109,6 +109,14 @@ export function Deck() {
           </div>
         )}
       </header>
+
+      {deck.hasCover && (
+        <img
+          src={`/api/decks/${deck.id}/cover?v=${deck.coverVersion ?? ''}`}
+          alt=""
+          className="mt-4 h-36 w-full rounded-card object-cover shadow-card sm:h-44"
+        />
+      )}
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
         {modes.map(({ key, label, detail, icon: Icon }) => {
@@ -226,7 +234,7 @@ export function Deck() {
       />
 
       <AddCardsDialog open={adding} onClose={() => setAdding(false)} deckId={deck.id} />
-      <EditDeckDialog open={editing} onClose={() => setEditing(false)} deckId={deck.id} title={deck.title} description={deck.description ?? ''} />
+      <EditDeckDialog open={editing} onClose={() => setEditing(false)} deckId={deck.id} title={deck.title} description={deck.description ?? ''} coverVersion={deck.coverVersion} />
       <EditCardDialog card={editingCard} deckId={deck.id} onClose={() => setEditingCard(null)} />
       <ConfirmDialog
         open={Boolean(deletingCard)}
@@ -331,9 +339,49 @@ function AddCardsDialog({ open, onClose, deckId }: { open: boolean; onClose: () 
   )
 }
 
-function EditDeckDialog({ open, onClose, deckId, title, description }: { open: boolean; onClose: () => void; deckId: string; title: string; description: string }) {
+function EditDeckDialog({
+  open,
+  onClose,
+  deckId,
+  title,
+  description,
+  coverVersion,
+}: {
+  open: boolean
+  onClose: () => void
+  deckId: string
+  title: string
+  description: string
+  coverVersion: string | null
+}) {
+  const toast = useToast()
   const [form, setForm] = useState({ title, description })
+  const [coverError, setCoverError] = useState('')
+  const coverInput = useRef<HTMLInputElement>(null)
+  const coverMb = Math.round(MAX_COVER_BYTES / (1024 * 1024))
+
+  // Reopening the dialog should show the deck as it is now, not the values from
+  // the first time this component was mounted.
+  useEffect(() => {
+    if (open) {
+      setForm({ title, description })
+      setCoverError('')
+    }
+  }, [open, title, description])
+
   const save = useApiMutation(() => api(`/decks/${deckId}`, { method: 'PATCH', json: form }), ['deck', 'decks'], { onSuccess: onClose })
+  const attachCover = useApiMutation((file: File) => uploadDeckCover(deckId, file), ['deck', 'decks', 'storage'], {
+    onSuccess: () => {
+      setCoverError('')
+      toast('Cover updated')
+    },
+    onError: (error) => toast(error.message, 'danger'),
+  })
+  const removeCover = useApiMutation(() => deleteDeckCover(deckId), ['deck', 'decks', 'storage'], {
+    onSuccess: () => toast('Cover removed'),
+    onError: (error) => toast(error.message, 'danger'),
+  })
+
   return (
     <Dialog
       open={open}
@@ -354,6 +402,49 @@ function EditDeckDialog({ open, onClose, deckId, title, description }: { open: b
         </Field>
         <Field label="Description">
           <FieldInput value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        </Field>
+        <Field label="Cover image" hint={`PNG, JPEG, WebP or GIF up to ${coverMb} MB.`}>
+          <div className="flex flex-wrap items-center gap-3">
+            {coverVersion ? (
+              <img src={`/api/decks/${deckId}/cover?v=${coverVersion}`} alt="Current cover" className="size-14 rounded-[13px] object-cover" />
+            ) : (
+              <span className="grid size-14 place-items-center rounded-[13px] bg-surface-2 text-faint">
+                <ImagePlus className="size-5" />
+              </span>
+            )}
+            <Button type="button" onClick={() => coverInput.current?.click()} loading={attachCover.isPending}>
+              {coverVersion ? 'Replace image' : 'Add image'}
+            </Button>
+            {coverVersion && (
+              <Button type="button" variant="danger" onClick={() => removeCover.mutate(undefined)} loading={removeCover.isPending}>
+                Remove
+              </Button>
+            )}
+          </div>
+          <input
+            ref={coverInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+              const looksLikeImage = file.type ? file.type.startsWith('image/') : ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension)
+              if (!looksLikeImage) {
+                setCoverError('Choose a PNG, JPEG, WebP or GIF image.')
+                return
+              }
+              if (file.size > MAX_COVER_BYTES) {
+                setCoverError(`Cover images are limited to ${coverMb} MB.`)
+                return
+              }
+              setCoverError('')
+              attachCover.mutate(file)
+            }}
+          />
+          {coverError && <p className="text-[12.5px] text-danger">{coverError}</p>}
         </Field>
       </div>
     </Dialog>

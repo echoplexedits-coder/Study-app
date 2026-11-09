@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 
+import { AccountSettings } from '../components/AccountSettings'
 import { LegalSafety } from '../components/LegalSafety'
 import { Avatar, Badge, Button, ConfirmDialog, Input, useToast } from '../components/ui'
 import { api, useApiMutation, useMe, useStorage } from '../lib/api'
+import { signOut } from '../lib/auth'
 import { UploadDashboard } from './UploadDashboard'
 
 interface RoleRow {
@@ -33,6 +35,8 @@ export function Settings() {
   const [newRole, setNewRole] = useState<'admin' | 'student'>('student')
   const [savingRole, setSavingRole] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+  const [signOutError, setSignOutError] = useState('')
   const [addError, setAddError] = useState('')
   const [confirm, setConfirm] = useState<'reset' | 'clear' | null>(null)
   // Storage is included so the Storage card reflects a clear/reset immediately
@@ -121,15 +125,34 @@ export function Settings() {
             </p>
           </div>
           {me.capabilities.auth !== 'development' ? (
-            <form method="post" action={me.capabilities.auth === 'google' ? '/auth/google/signout' : '/auth/freebuff/signout'}>
-              <input type="hidden" name="returnTo" value="/" />
-              <Button type="submit">Sign out</Button>
-            </form>
+            <Button
+              type="button"
+              loading={signingOut}
+              onClick={async () => {
+                setSigningOut(true)
+                setSignOutError('')
+                try {
+                  await signOut(me.capabilities.auth)
+                } catch (error) {
+                  setSignOutError((error as Error).message)
+                  setSigningOut(false)
+                }
+              }}
+            >
+              Sign out
+            </Button>
           ) : (
             <Badge tone="warning">Development user</Badge>
           )}
         </div>
+        {signOutError && <p className="mt-2 text-[12.5px] text-danger">{signOutError}</p>}
         {me.capabilities.auth === 'development' && <p className="mt-2 text-[12.5px] text-faint">Sign in with Freebuff is not configured yet. Run the app with FREEBUFF_CLIENT_ID set to use real accounts.</p>}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-[14px] font-semibold">Profile &amp; security</h2>
+        <p className="mt-1 text-[12.5px] text-faint">Your username, student ID and password. The identity fields are permanent and cannot be edited by anyone, including you.</p>
+        <AccountSettings />
       </section>
 
       <section className="mt-8">

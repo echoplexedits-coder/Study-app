@@ -1,73 +1,121 @@
-import { Flame } from 'lucide-react'
+import { BarChart3, BookOpen, FileText, Flame, FolderOpen, Settings as SettingsIcon } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router'
 
-import { BRAND } from '../../shared/types'
 import { useMe } from '../lib/api'
 import { cx } from '../lib/cx'
 import { LegalFooter } from './LegalFooter'
+import { Brand, NavBar } from './SiteNav'
 import { Avatar } from './ui'
 
+/** Kept as a named `Logo` for the policy and sign-in pages. */
 export function Logo({ className }: { className?: string }) {
   return (
-    <Link to="/" className={cx('inline-flex items-center gap-2.5 text-[16px] font-semibold tracking-tight', className)}>
-      <span className="relative grid size-8 place-items-center rounded-[11px] bg-accent">
-        <span className="absolute h-[12px] w-[18px] -rotate-12 rounded-[4px] bg-white/35" />
-        <span className="relative h-[12px] w-[18px] rounded-[4px] bg-white" />
-      </span>
-      {BRAND}
-    </Link>
+    <div className={className}>
+      <Brand />
+    </div>
   )
 }
 
+const navItems = [
+  { label: 'Library', to: '/', end: true },
+  { label: 'Notes', to: '/notes' },
+  { label: 'Resources', to: '/resources' },
+  { label: 'Quizzes', to: '/quizzes' },
+]
+
 export function Shell() {
   const { data: me } = useMe()
-  const link = 'inline-flex h-9 items-center rounded-control px-3.5 text-[14px] font-medium transition-colors'
+  const name = me?.user.name ?? me?.user.email ?? 'You'
+
   return (
     <div className="min-h-screen">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-control focus:bg-surface focus:px-4 focus:py-2 focus:text-[14px] focus:font-medium focus:shadow-pop"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-control focus:bg-surface focus:px-4 focus:py-2 focus:text-[14px] focus:font-medium focus:shadow-card"
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between px-5 sm:px-8">
-          <div className="flex items-center gap-8">
-            <Logo />
-            <nav className="hidden items-center gap-1 sm:flex">
-              <NavLink to="/" end className={({ isActive }) => cx(link, isActive ? 'bg-surface text-fg shadow-card' : 'text-muted hover:text-fg')}>
-                Library
-              </NavLink>
-              <NavLink to="/stats" className={({ isActive }) => cx(link, isActive ? 'bg-surface text-fg shadow-card' : 'text-muted hover:text-fg')}>
-                Progress
-              </NavLink>
-            </nav>
-          </div>
-          <div className="flex items-center gap-2">
+
+      <NavBar
+        items={navItems}
+        className="border-b border-line/70"
+        mobileFooter={
+          <>
+            <NavLink to="/stats" className="flex h-11 items-center gap-2.5 rounded-control px-3 text-[14px] font-medium text-muted hover:bg-surface-2 hover:text-fg-deep">
+              <BarChart3 className="size-4" aria-hidden />
+              Progress
+            </NavLink>
+            <NavLink to="/settings" className="flex h-11 items-center gap-2.5 rounded-control px-3 text-[14px] font-medium text-muted hover:bg-surface-2 hover:text-fg-deep">
+              <SettingsIcon className="size-4" aria-hidden />
+              Settings
+            </NavLink>
+          </>
+        }
+        right={
+          <>
             {me && me.streak > 0 && (
-              <Link to="/stats" className="inline-flex h-9 items-center gap-1.5 rounded-control bg-warning-soft px-3 text-[13.5px] font-semibold text-warning">
-                <Flame className="size-4" />
+              <Link
+                to="/stats"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-warning-soft px-3 text-[12.5px] font-semibold text-warning transition-transform hover:-translate-y-px"
+              >
+                <Flame className="size-3.5" aria-hidden />
                 {me.streak}
               </Link>
             )}
-            <NavLink to="/settings" aria-label="Settings" className="grid size-9 place-items-center rounded-full">
-              {me && <Avatar name={me.user.name ?? me.user.email ?? 'You'} hue={218} src={me.user.picture} size={32} />}
+            <NavLink
+              to="/stats"
+              className={({ isActive }) =>
+                cx(
+                  'inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition-colors',
+                  isActive ? 'bg-accent-soft text-accent-deep' : 'text-muted hover:bg-surface-2 hover:text-fg-deep',
+                )
+              }
+            >
+              Progress
             </NavLink>
-          </div>
-        </div>
-      </header>
-      {/* Bottom padding clears the fixed mobile tab bar so content never hides behind it. */}
-      <main id="main" className="mx-auto max-w-[1120px] px-5 pb-10 pt-8 sm:px-8 sm:pt-10">
+            <NavLink to="/settings" aria-label="Settings" className="ml-1 grid size-9 place-items-center rounded-full ring-1 ring-line transition-shadow hover:ring-accent/40">
+              {me ? <Avatar name={name} hue={218} src={me.user.picture} size={32} /> : <span className="size-8 rounded-full bg-surface-2" />}
+            </NavLink>
+          </>
+        }
+      />
+
+      <main id="main" className="mx-auto w-full max-w-[1180px] px-5 pb-24 pt-7 sm:px-8 sm:pb-12 sm:pt-9">
         <Outlet />
       </main>
+
       <LegalFooter />
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-2 border-t border-line bg-surface/90 p-2 backdrop-blur-xl sm:hidden">
-        <NavLink to="/" end className={({ isActive }) => cx('flex h-11 items-center justify-center rounded-control text-[14px] font-medium', isActive ? 'bg-surface shadow-card' : 'text-muted')}>
-          Library
-        </NavLink>
-        <NavLink to="/stats" className={({ isActive }) => cx('flex h-11 items-center justify-center rounded-control text-[14px] font-medium', isActive ? 'bg-surface shadow-card' : 'text-muted')}>
-          Progress
-        </NavLink>
+
+      {/* Mobile keeps a fixed tab bar for the three places people return to,
+          while the drawer in the header carries the rest. */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line/80 bg-[rgb(247_251_255/0.94)] px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-1.5 backdrop-blur-xl sm:hidden">
+        <div className="grid grid-cols-4">
+          {[
+            { to: '/', end: true, label: 'Library', icon: BookOpen },
+            { to: '/notes', label: 'Notes', icon: FileText },
+            { to: '/resources', label: 'Resources', icon: FolderOpen },
+            { to: '/stats', label: 'Progress', icon: BarChart3 },
+          ].map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                cx(
+                  'flex h-12 flex-col items-center justify-center gap-1 rounded-control text-[10.5px] font-medium transition-colors',
+                  isActive ? 'text-accent' : 'text-faint',
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <item.icon className={cx('size-[17px]', isActive && 'text-accent')} aria-hidden />
+                  {item.label}
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
       </nav>
     </div>
   )

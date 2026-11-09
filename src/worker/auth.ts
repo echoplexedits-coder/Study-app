@@ -3,7 +3,8 @@ import type { FreebuffAuth, FreebuffUser } from '@freebuff/auth'
 import type { Context, MiddlewareHandler } from 'hono'
 
 import type { AppContext, Env } from './env'
-import { googleUser } from './google'
+import { googleUser, hasGoogleSessionCookie } from './google'
+import { hasSessionCookie, resolveIdentity, sessionAccount } from './identity'
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
 
@@ -47,13 +48,28 @@ export function getAuth(env: Env, request: Request): FreebuffAuth | null {
   return cached.auth
 }
 
-export async function currentUser(env: Env, request: Request): Promise<FreebuffUser | null> {
+export async function currentUser(env: Env, request: Request, db?: D1Database): Promise<FreebuffUser | null> {
   const auth = getAuth(env, request)
   const freebuff = auth ? await auth.getUser(request) : null
   if (freebuff) return freebuff
-  // Google sessions are a separate identity namespace (`google:<sub>`).
+  // Google sessions are a separate identity namespace (`google:<sub>`), which
+  // is only resolved onto another account when that is provably safe.
   const google = await googleUser(env, request)
-  if (google) return google
+  if (google) return db ? await resolveIdentity(db, google) : google
+  // A Google cookie that does not verify is a broken or forged session, not an
+  // absent one; it must not slide into the loopback development identity.
+  if (hasGoogleSessionCookie(env, request)) return null
+  // A username/password account carries an opaque token; the session row is
+  // the authority, so a revoked or expired session stops working immediately.
+  if (db) {
+    const account = await sessionAccount(db, request)
+    if (account) {
+      return { sub: account.owner_sub, name: account.full_name ?? account.username ?? undefined, email: account.email ?? undefined, email_verified: false }
+    }
+    // A cookie that no longer resolves is a revoked or expired session — it
+    // must stay signed out, never slide into the development identity.
+    if (hasSessionCookie(request)) return null
+  }
   return authMode(env, request) === 'development' ? DEV_USER : null
 }
 
@@ -67,7 +83,7 @@ export const requireUser: MiddlewareHandler<AppContext> = async (c, next) => {
   if (request.method !== 'GET' && request.method !== 'HEAD' && !isSameOriginRequest(request, appOrigin(c.env, request))) {
     return c.json({ error: 'Cross-origin request refused.' }, 403)
   }
-  const user = await currentUser(c.env, request)
+  const user = await currentUser(c.env, request, c.get('db') as D1Database | undefined)
   if (!user) return c.json({ error: 'Sign in required.' }, 401)
   c.set('user', user)
   await next()
