@@ -4,7 +4,7 @@ import type { Context, MiddlewareHandler } from 'hono'
 
 import type { AppContext, Env } from './env'
 import { googleUser, hasGoogleSessionCookie } from './google'
-import { hasSessionCookie, resolveIdentity, sessionAccount } from './identity'
+import { hasSessionCookie, readCookie, resolveIdentity, sessionAccount } from './identity'
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
 
@@ -71,6 +71,24 @@ export async function currentUser(env: Env, request: Request, db?: D1Database): 
     if (hasSessionCookie(request)) return null
   }
   return authMode(env, request) === 'development' ? DEV_USER : null
+}
+
+const AUTH_SESSION_COOKIES = [
+  'myclassroom_session',
+  '__Host-myclassroom_session',
+  'recall_user',
+  '__Host-recall_user',
+  'freebuff_session',
+  '__Host-freebuff_session',
+] as const
+
+/**
+ * Only an actual sign-in cookie should switch `/` from the static landing page
+ * to the app shell. Analytics, consent or other unrelated cookies must not.
+ * The OAuth transaction cookie is deliberately absent: it is not a session.
+ */
+export function hasAuthCookie(request: Request): boolean {
+  return AUTH_SESSION_COOKIES.some((name) => Boolean(readCookie(request, name)))
 }
 
 export function appOrigin(env: Env, request: Request): string {

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { authMode, getAuth, requireUser } from './auth'
+import { authMode, getAuth, hasAuthCookie, requireUser } from './auth'
 import { loadRole, requireDb } from './db'
 import type { AppContext, Env } from './env'
 import { googleCallback, googleConfigured, googleSignout, googleStart } from './google'
@@ -67,7 +67,7 @@ app.get('/api/health', (c) => c.json({ ok: true }))
 // visitors never see any class material in that static page.
 app.get('/', async (c, next) => {
   if (import.meta.env.DEV) return next()
-  if (c.req.header('cookie')) return next()
+  if (hasAuthCookie(c.req.raw)) return next()
   const url = new URL(c.req.url)
   // The assets layer redirects .html paths to their extensionless form, so
   // fetch /landing and keep the visitor on /.
