@@ -178,6 +178,24 @@ export async function accountFor(db: D1Database, sub: string): Promise<AccountRo
   return (await db.prepare(`SELECT ${ACCOUNT_COLUMNS} FROM users WHERE owner_sub = ?`).bind(sub).first<AccountRow>()) ?? null
 }
 
+export type EmailConflict = 'password' | 'provider' | 'role'
+
+/**
+ * Why an address cannot be used for a new password account. Provider-created
+ * accounts and role addresses must never be claimable by password sign-up:
+ * registration does not verify that the person owns the address.
+ */
+export async function emailConflict(db: D1Database, email: string): Promise<EmailConflict | null> {
+  const normal = email.trim().toLowerCase()
+  const account = await db
+    .prepare(`SELECT password_hash FROM users WHERE email_key = ? LIMIT 1`)
+    .bind(normal)
+    .first<{ password_hash: string | null }>()
+  if (account) return account.password_hash ? 'password' : 'provider'
+  const role = await db.prepare(`SELECT 1 AS n FROM roles WHERE lower(email) = ? LIMIT 1`).bind(normal).first<{ n: number }>()
+  return role ? 'role' : null
+}
+
 /** Resolves a session cookie to the account behind it. */
 /**
  * Maps a provider identity onto an existing account only when that is provably

@@ -320,8 +320,21 @@ export async function logAudit(db: D1Database, user: FreebuffUser, action: strin
   }
 }
 
+/**
+ * Roles are only for provider-authenticated identities. A password account is
+ * namespaced `local:` and has no verified email, so it can never inherit an
+ * email-based admin row. Google must explicitly report a verified address;
+ * Freebuff is itself the identity provider.
+ */
+export function isProviderVerified(user: FreebuffUser): boolean {
+  if (user.sub.startsWith('local:')) return false
+  if (user.sub.startsWith('google:')) return user.email_verified === true
+  return true
+}
+
 /** The role comes from the database, never from a request or a hardcoded list. */
 export async function roleFor(db: D1Database, user: FreebuffUser): Promise<Role> {
+  if (!isProviderVerified(user)) return 'student'
   const email = user.email?.trim().toLowerCase()
   if (!email) return 'student'
   const row = await db.prepare(`SELECT role FROM roles WHERE email = ?`).bind(email).first<{ role: string }>()

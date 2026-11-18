@@ -15,6 +15,7 @@ import {
   clientKey,
   createSession,
   dbFor,
+  emailConflict,
   hashPassword,
   mintResetToken,
   needsRehash,
@@ -107,12 +108,18 @@ authRoutes.post('/auth/register', async (c) => {
   if (passwordIssue) return c.json({ error: 'password_invalid', message: passwordIssue }, 400)
   if (password !== confirm) return c.json({ error: 'password_mismatch', message: 'The two passwords do not match.' }, 400)
 
-  const existing = await db.prepare(`SELECT owner_sub, password_hash FROM users WHERE email_key = ?`).bind(email).first<{ owner_sub: string; password_hash: string | null }>()
-  if (existing) {
+  const conflict = await emailConflict(db, email)
+  if (conflict) {
     return c.json(
-      existing.password_hash
+      conflict === 'password'
         ? { error: 'email_taken', message: 'That email already has an account. Sign in instead, or use a different address.' }
-        : { error: 'email_linked', message: 'That email is already used by a Google or Freebuff account. Sign in with that provider instead.' },
+        : {
+            error: 'email_linked',
+            message:
+              conflict === 'role'
+                ? 'That email is reserved for a site account. Sign in with that account instead.'
+                : 'That email is already used by a Google or Freebuff account. Sign in with that provider instead.',
+          },
       409,
     )
   }
