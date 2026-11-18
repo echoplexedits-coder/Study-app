@@ -214,7 +214,9 @@ export function Settings() {
         {me.capabilities.canEdit ? (
           <>
             <p className="mt-1 text-[12.5px] text-faint">
-              This is the list of emails that can add, change or remove library content. Only account emails that match a row here get admin access, and a mismatching email silently lands as a student, which is why the upload button can disappear even for the site owner.
+              This is the list of emails that can add, change or remove library content. Admin access is granted only when the signed-in account is
+              provider-verified: Google (with a verified email) or Freebuff. A username/password account is always a student, even if its email matches a
+              row here. If you use Google for admin, enable 2-Step Verification on that Google account.
             </p>
             <div className="mt-3 divide-y divide-line rounded-card bg-surface shadow-card">
               <div className="flex items-center gap-3 p-4">

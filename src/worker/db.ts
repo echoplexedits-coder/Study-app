@@ -341,6 +341,17 @@ export async function roleFor(db: D1Database, user: FreebuffUser): Promise<Role>
   return row?.role === 'admin' ? 'admin' : 'student'
 }
 
+/** How many email rows still carry the admin role. */
+export async function adminRoleCount(db: D1Database): Promise<number> {
+  const row = await db.prepare(`SELECT COUNT(*) AS n FROM roles WHERE role = 'admin'`).first<{ n: number }>()
+  return Number(row?.n ?? 0)
+}
+
+/** A role-bearing account must not be the only admin left after a change. */
+export function isLastAdminChange(role: string | null | undefined, admins: number): boolean {
+  return role === 'admin' && admins <= 1
+}
+
 export const loadRole: MiddlewareHandler<AppContext> = async (c, next) => {
   const db = c.get('db')
   const user = c.get('user')

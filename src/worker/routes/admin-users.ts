@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 
 import { privateJson } from '../auth'
-import { logAudit, requireAdmin, now } from '../db'
+import { adminRoleCount, isLastAdminChange, logAudit, requireAdmin, now } from '../db'
 import type { AppContext } from '../env'
 import { RESET_TTL_MS, mintResetToken } from '../identity'
 import type { AccountStatus, AdminUser, AdminUsersResponse, ResetRequest } from '../../shared/types'
@@ -94,6 +94,19 @@ adminUsers.post('/admin/users/:sub/status', requireAdmin, async (c) => {
 
   const row = await db.prepare(`SELECT owner_sub, username, student_id, status FROM users WHERE owner_sub = ?`).bind(target).first<{ owner_sub: string; username: string | null; student_id: string | null; status: string }>()
   if (!row) return c.json({ error: 'not_found', message: 'That account does not exist.' }, 404)
+
+  // Suspending the only remaining admin would lock the site out just as surely
+  // as demoting or deleting it. The self-target check above already covers the
+  // usual case; this keeps the rule explicit if more admins are added.
+  if (status === 'suspended') {
+    const role = await db
+      .prepare(`SELECT r.role FROM users u JOIN roles r ON lower(r.email) = u.email_key WHERE u.owner_sub = ? LIMIT 1`)
+      .bind(target)
+      .first<{ role: string }>()
+    if (isLastAdminChange(role?.role, await adminRoleCount(db))) {
+      return c.json({ error: 'last_admin', message: 'This is the only admin. Promote another account before suspending it.' }, 409)
+    }
+  }
 
   await db.prepare(`UPDATE users SET status = ? WHERE owner_sub = ?`).bind(status, target).run()
   // Sessions are deliberately left alone: loadRole refuses every request for a

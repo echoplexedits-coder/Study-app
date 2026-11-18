@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { privateJson } from '../auth'
-import { logAudit, now, requireAdmin } from '../db'
+import { adminRoleCount, isLastAdminChange, logAudit, now, requireAdmin } from '../db'
 import { listR2Objects } from '../r2'
 import type { AppContext } from '../env'
 
@@ -18,12 +18,6 @@ admin.get('/admin/roles', requireAdmin, async (c) => {
   return privateJson(c, { roles: rows.results })
 })
 
-/** Used to refuse a change that would leave nobody able to administer the site. */
-async function adminCount(db: D1Database): Promise<number> {
-  const row = await db.prepare(`SELECT COUNT(*) AS n FROM roles WHERE role = 'admin'`).first<{ n: number }>()
-  return Number(row?.n ?? 0)
-}
-
 admin.post('/admin/roles', requireAdmin, async (c) => {
   const db = c.get('db')
   const { email, role } = await c.req.json<{ email?: string; role?: string }>()
@@ -37,7 +31,7 @@ admin.post('/admin/roles', requireAdmin, async (c) => {
 
   // Demoting the only admin would lock every account out of the library forever.
   const existing = await db.prepare(`SELECT role FROM roles WHERE email = ?`).bind(normalized).first<{ role: string }>()
-  if (existing?.role === 'admin' && role === 'student' && (await adminCount(db)) <= 1) {
+  if (role === 'student' && isLastAdminChange(existing?.role, await adminRoleCount(db))) {
     return c.json({ error: 'last_admin', message: 'This is the only admin. Promote another account first.' }, 409)
   }
 
@@ -52,7 +46,7 @@ admin.delete('/admin/roles/:email', requireAdmin, async (c) => {
   const normalized = email.trim().toLowerCase()
   if (!normalized) return c.json({ error: 'Invalid request.', message: 'email must not be empty.' }, 400)
   const existing = await db.prepare(`SELECT role FROM roles WHERE email = ?`).bind(normalized).first<{ role: string }>()
-  if (existing?.role === 'admin' && (await adminCount(db)) <= 1) {
+  if (isLastAdminChange(existing?.role, await adminRoleCount(db))) {
     return c.json({ error: 'last_admin', message: 'This is the only admin. Promote another account first.' }, 409)
   }
   await db.prepare(`DELETE FROM roles WHERE email = ?`).bind(normalized).run()

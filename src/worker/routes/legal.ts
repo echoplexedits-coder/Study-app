@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import type { Context, MiddlewareHandler } from 'hono'
 
 import { appOrigin, privateJson } from '../auth'
-import { id, logAudit, now } from '../db'
+import { adminRoleCount, id, isLastAdminChange, logAudit, now } from '../db'
 import type { AppContext } from '../env'
 import { CONTACT_TOPICS, POLICY_EFFECTIVE, POLICY_VERSION, REPORT_REASONS } from '../../shared/legal'
 
@@ -163,11 +163,8 @@ legal.post('/legal/delete-account', async (c) => {
 
   // The last admin cannot delete themselves out of the site; promote someone
   // first. This mirrors the guard on role changes and library restore.
-  if (role === 'admin') {
-    const admins = await db.prepare(`SELECT COUNT(*) AS n FROM roles WHERE role = 'admin'`).first<{ n: number }>()
-    if (Number(admins?.n ?? 0) <= 1) {
-      return c.json({ error: 'last_admin', message: 'This is the only admin account. Promote another admin before deleting it.' }, 409)
-    }
+  if (role === 'admin' && isLastAdminChange(role, await adminRoleCount(db))) {
+    return c.json({ error: 'last_admin', message: 'This is the only admin account. Promote another admin before deleting it.' }, 409)
   }
 
   const sub = user.sub
