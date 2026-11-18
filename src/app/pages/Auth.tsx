@@ -436,7 +436,7 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <AuthLayout title="Reset your password." lead="We never say whether an account exists. If it does, a one-time link is on its way — or a moderator can hand you one.">
+    <AuthLayout title="Reset your password." lead="Reset links are sent by the site admin. We never say whether an account exists.">
       <div className="space-y-5">
         {sent ? (
           <div className="space-y-4">
@@ -468,11 +468,9 @@ export function ForgotPasswordPage() {
               required
             />
             {error && <Alert>{error}</Alert>}
-            {status.data && !status.data.mail && (
-              <p className="rounded-control border border-line-strong bg-surface-2 px-3 py-2 text-[11.5px] leading-relaxed text-muted">
-                Email delivery is not set up on this site yet. Your request goes to the site admin, who will give you a one-time reset link.
-              </p>
-            )}
+            <p className="rounded-control border border-line-strong bg-surface-2 px-3 py-2 text-[11.5px] leading-relaxed text-muted">
+              Reset links are sent by the site admin. Email delivery is not enabled; your request waits for the admin to send you a one-time link.
+            </p>
             <SubmitButton pending={pending} disabled={!identifier.trim()}>
               Send reset link
               <ArrowRight className="size-4" aria-hidden />

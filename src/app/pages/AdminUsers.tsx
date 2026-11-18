@@ -12,6 +12,11 @@ function when(value: number): string {
   return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+function whenExact(value: number): string {
+  return new Date(value).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-card border border-line/70 bg-surface p-4 shadow-card">
@@ -39,8 +44,9 @@ export function AdminUsers() {
   const [page, setPage] = useState(0)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
-  const [link, setLink] = useState<{ id: string; url: string } | null>(null)
+  const [link, setLink] = useState<{ id: string; url: string; expiresAt: number } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [clock, setClock] = useState(Date.now())
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -49,6 +55,12 @@ export function AdminUsers() {
     }, 300)
     return () => window.clearTimeout(timer)
   }, [query])
+
+  // Re-render the banner while it is open so a link visibly expires at 30 minutes.
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const admin = Boolean(me?.data?.capabilities.canEdit)
   const users = useAdminUsers(search, page)
@@ -84,7 +96,11 @@ export function AdminUsers() {
     setError('')
     try {
       const result = await issueResetLink(id)
-      setLink({ id, url: `${window.location.origin}${result.path}` })
+      setLink({
+        id,
+        url: `${window.location.origin}${result.path}`,
+        expiresAt: Date.now() + Math.max(1, result.expiresInMinutes) * 60_000,
+      })
       setCopied(false)
       await client.invalidateQueries({ queryKey: ['reset-requests'] })
     } catch (failure) {
@@ -197,33 +213,45 @@ export function AdminUsers() {
       <section className="mt-10">
         <h2 className="text-[14px] font-semibold text-fg">Password reset requests</h2>
         <p className="mt-1 text-[12.5px] leading-relaxed text-faint">
-          Requests filed from the sign-in page. Creating a link mints a single-use token that expires in 30 minutes — copy it now, it cannot be shown again.
+          Open requests, newest first. Creating a link mints a single-use token that expires in 30 minutes — copy it now, it cannot be shown again.
         </p>
 
-        {link && (
-          <div className="mt-3 rounded-card border border-accent/30 bg-accent-soft/50 p-4">
-            <p className="text-[12px] font-medium text-accent-deep">One-time reset link</p>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <Input readOnly value={link.url} onFocus={(event) => event.currentTarget.select()} className="font-mono text-[12px]" />
-              <Button
-                variant="primary"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(link.url)
-                    setCopied(true)
-                    toast('Link copied')
-                  } catch {
-                    toast('Select the link and copy it manually')
-                  }
-                }}
-              >
-                {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
+        {link && (() => {
+          const expired = clock >= link.expiresAt
+          const minutes = Math.max(0, Math.ceil((link.expiresAt - clock) / 60_000))
+          return (
+            <div className={`mt-3 rounded-card border p-4 ${expired ? 'border-line bg-surface-2' : 'border-accent/30 bg-accent-soft/50'}`}>
+              <p className={`text-[12px] font-medium ${expired ? 'text-muted' : 'text-accent-deep'}`}>
+                {expired ? 'Reset link expired' : 'One-time reset link'}
+              </p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <Input readOnly value={link.url} onFocus={(event) => event.currentTarget.select()} className="font-mono text-[12px]" />
+                <Button
+                  variant="primary"
+                  disabled={expired}
+                  onClick={async () => {
+                    if (expired) return
+                    try {
+                      await navigator.clipboard.writeText(link.url)
+                      setCopied(true)
+                      toast('Link copied')
+                    } catch {
+                      toast('Select the link and copy it manually')
+                    }
+                  }}
+                >
+                  {expired ? <ShieldOff className="size-4" aria-hidden /> : copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
+                  {expired ? 'Expired' : copied ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+              <p className="mt-2 text-[11.5px] text-muted">
+                {expired
+                  ? 'This link is no longer valid. Create a new link for the request below.'
+                  : `Expires in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}. Send it through a channel you trust; it signs the student out everywhere they are already signed in.`}
+              </p>
             </div>
-            <p className="mt-2 text-[11.5px] text-muted">Send this to the student through a channel you trust. It signs them out everywhere they are already signed in.</p>
-          </div>
-        )}
+          )
+        })()}
 
         <div className="mt-3 overflow-hidden rounded-card border border-line/70 bg-surface shadow-card">
           {requests.isPending ? (
@@ -240,7 +268,7 @@ export function AdminUsers() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-medium text-fg">{request.username ? `@${request.username}` : request.identifier}</p>
                     <p className="text-[11.5px] text-faint">
-                      {request.studentId ?? '—'} · requested {when(request.createdAt)}
+                      {request.studentId ?? '—'} · requested {whenExact(request.createdAt)}
                     </p>
                   </div>
                   <Button size="sm" variant="primary" loading={busy === request.id} onClick={() => mint(request.id)}>
