@@ -9,7 +9,6 @@ import type {
   Me,
   NoteFile,
   Profile,
-  PublicLibrary,
   ResetRequest,
   Session,
   SessionResult,
@@ -66,10 +65,6 @@ export const useStorage = () => useQuery({ queryKey: ['storage'], queryFn: () =>
 /** The read-only classwork library. Available to every signed-in account. */
 export const useNotes = () =>
   useQuery({ queryKey: ['notes'], queryFn: () => api<{ files: NoteFile[] }>('/notes'), staleTime: 30_000 })
-
-/** Counts and the three newest titles, for the signed-out landing page. */
-export const usePublicLibrary = () =>
-  useQuery({ queryKey: ['public-library'], queryFn: () => api<PublicLibrary>('/public/library'), staleTime: 60_000, retry: false })
 
 /** Each key segment is encoded, so an R2 key with slashes stays one path tail. */
 export function noteUrl(key: string, download = false) {

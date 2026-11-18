@@ -202,16 +202,4 @@ export interface NoteFile {
   uploadedAt: number
 }
 
-/** The public, sign-in-free window used by the landing page. */
-export interface PublicLibrary {
-  notes: number
-  subjects: number
-  classes: number
-  recent: {
-    name: string
-    className: string
-    subject: string
-    contentType: string | null
-    uploadedAt: number
-  }[]
-}
+

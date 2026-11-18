@@ -18,7 +18,7 @@ export const LEGAL_PAGES = [
 
 /** Shown on every policy page, the consent screen and the sign-in page. */
 export const DISCLAIMER =
-  'myclassroom is an independent study tool, built and operated by an individual developer. It is not affiliated with, endorsed by, sponsored by or operated by any school, college, university, coaching centre, education board or government body. Decks and classwork are uploaded by the person who runs this site or by its signed-in users and do not represent any institution.'
+  'MyClassroom is an independent study tool, built and operated by an individual developer. It is not affiliated with, endorsed by, sponsored by or operated by any school, college, university, coaching centre, education board or government body. Classwork is uploaded only by the site admin; student accounts are read-only, and nothing here represents any institution.'
 
 export const REPORT_REASONS = [
   { value: 'harassment', label: 'Harassment, threats or bullying' },

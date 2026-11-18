@@ -1,54 +1,62 @@
-import { ArrowRight, ArrowUpRight, BookOpen, FileText, FolderOpen, GraduationCap, LayoutGrid, Layers, Lock, Search, Sparkles, UsersRound, Zap } from 'lucide-react'
-import { useEffect } from 'react'
-import { Link } from 'react-router'
-import { motion } from 'motion/react'
+import {
+  ArrowRight,
+  ArrowUpRight,
+  BookOpen,
+  FileText,
+  FolderOpen,
+  GraduationCap,
+  LayoutGrid,
+  Layers,
+  Lock,
+  Search,
+  Sparkles,
+  UsersRound,
+  Zap,
+} from 'lucide-react'
 
 import { CONTACT_EMAIL, DISCLAIMER, LEGAL_PAGES } from '../../shared/legal'
-import { useAuthStatus, usePublicLibrary } from '../lib/api'
-import { NavBar } from '../components/SiteNav'
-import '../../welcome.css'
 
 const navItems = [
   { label: 'Home', href: '#home' },
-  { label: 'Notes', href: '#notes' },
-  { label: 'Resources', href: '#resources' },
-  { label: 'Quizzes', href: '#quizzes' },
+  { label: 'The library', href: '#library' },
+  { label: "What's inside", href: '#inside' },
+  { label: 'Practice', href: '#quizzes' },
   { label: 'About', href: '#about' },
 ]
 
 const features = [
   {
     icon: FileText,
-    title: 'Class Notes',
-    copy: 'Every handout, slide deck and chapter summary the class has been given, kept in one library instead of a group chat.',
+    title: 'Class notes first',
+    copy: 'Handouts, slide decks and chapter summaries in one archive, instead of a group chat you have to scroll back through.',
   },
   {
     icon: Search,
-    title: 'Quick Access',
-    copy: 'Search by name, then narrow to your class or subject. Open a document in a preview, or download it for offline revision.',
+    title: 'Search and preview',
+    copy: 'Search by name, narrow by class or subject, then preview the document before you download it for offline revision.',
   },
   {
-    icon: UsersRound,
-    title: 'Made for Students',
-    copy: 'A read-only library for students. No uploading, no editing, nothing to break — just the material you were given.',
+    icon: Layers,
+    title: 'Practice beside them',
+    copy: 'Flashcards, a multiple-choice Learn mode and Match sit beside the notes for when reading is not enough.',
   },
 ]
 
 const steps = [
   {
     n: '01',
-    title: 'A teacher or admin uploads',
-    copy: 'Documents are added from the admin workspace and filed under a class, a subject and a date as they arrive.',
+    title: 'The admin uploads',
+    copy: 'Files are added from the admin workspace and filed under a class, a subject and a date. Student accounts cannot upload or edit.',
   },
   {
     n: '02',
-    title: 'The library organises itself',
-    copy: 'Each upload is grouped by class and subject, so the archive stays readable as the term goes on instead of becoming a folder of loose files.',
+    title: 'The library files it',
+    copy: 'Each document is grouped by class and subject, so the archive stays readable as the term goes on instead of becoming a pile of loose files.',
   },
   {
     n: '03',
-    title: 'Students read and download',
-    copy: 'Sign in and the notes are there: preview a PDF, open an image, or download the file you need before class.',
+    title: 'Students search and study',
+    copy: 'Sign in to preview a PDF, open an image or download a file — then switch to a deck when you want to practise.',
   },
 ]
 
@@ -76,43 +84,11 @@ const benefits = [
   },
 ]
 
-/** Every way in now starts from one page: Google, Freebuff or a username. */
-function signInHref(_google: boolean, returnTo: string) {
-  return `/signin?returnTo=${encodeURIComponent(returnTo)}`
-}
-
-function formatDate(ts: number) {
-  return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function kindOf(contentType: string | null) {
-  if (!contentType) return 'File'
-  if (contentType.startsWith('image/')) return 'Image'
-  if (contentType === 'application/pdf') return 'PDF'
-  if (contentType.includes('word')) return 'Document'
-  if (contentType.includes('presentation') || contentType.includes('powerpoint')) return 'Slides'
-  if (contentType.includes('sheet') || contentType.includes('excel') || contentType === 'text/csv') return 'Sheet'
-  if (contentType.startsWith('text/')) return 'Text'
-  return 'File'
-}
-
-const ease = [0.22, 1, 0.36, 1] as const
-
+/**
+ * The landing page is rendered on the server for signed-out visitors, so it
+ * deliberately uses no hooks, no router context and no browser globals.
+ */
 export function Welcome() {
-  const auth = useAuthStatus()
-  const library = usePublicLibrary()
-  const path = `${window.location.pathname}${window.location.search}`
-  const returnTo = path === '/welcome' ? '/' : path
-  const signIn = signInHref(auth.data?.google === true, returnTo)
-
-  useEffect(() => {
-    const previous = document.title
-    document.title = 'MyClassroom — Your notes. Anytime.'
-    return () => {
-      document.title = previous
-    }
-  }, [])
-
   return (
     <div className="land">
       <a
@@ -130,28 +106,59 @@ export function Welcome() {
         <span className="land-grain" />
       </div>
 
-      <NavBar
-        items={navItems}
-        mobileFooter={
-          <>
-            <a href={signIn} className="land-mobile-cta">
-              Sign in <ArrowRight className="size-4" />
+      <header className="land-header">
+        <div className="land-nav">
+          <a href="/" className="land-brand" aria-label="MyClassroom — home">
+            <span className="land-brand-mark" aria-hidden>
+              <svg viewBox="0 0 24 24" fill="none" className="size-[19px]">
+                <path
+                  d="M12 6.6C9.9 5.1 7 4.9 4.4 5.7v11.5c2.6-.8 5.5-.5 7.6 1 2.1-1.5 5-1.8 7.6-1V5.7C17 4.9 14.1 5.1 12 6.6Z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+                <path d="M12 7.4v10.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span className="land-brand-text">
+              <span className="land-brand-name">MyClassroom</span>
+              <span className="land-brand-sub">Study library</span>
+            </span>
+          </a>
+
+          <nav className="land-nav-links" aria-label="Primary">
+            {navItems.map((item) => (
+              <a key={item.label} href={item.href}>
+                {item.label}
+              </a>
+            ))}
+          </nav>
+
+          <div className="land-nav-actions">
+            <a href="/signin" className="land-nav-signin">
+              Sign in
             </a>
-            <p className="px-3 text-[12px] leading-relaxed text-faint">A read-only study library for students.</p>
-          </>
-        }
-        right={
-          <>
-            <a href={signIn} className="land-nav-signin">
-              Sign In
+            <a href="/signin" className="land-nav-cta">
+              Open library
+              <ArrowRight className="size-3.5" aria-hidden />
             </a>
-            <a href={signIn} className="land-nav-cta">
-              Get Started
-              <ArrowRight className="size-3.5" />
-            </a>
-          </>
-        }
-      />
+          </div>
+
+          <details className="land-menu">
+            <summary>Menu</summary>
+            <nav className="land-menu-panel" aria-label="Mobile">
+              {navItems.map((item) => (
+                <a key={item.label} href={item.href}>
+                  {item.label}
+                </a>
+              ))}
+              <a href="/signin" className="land-menu-signin">
+                Sign in
+              </a>
+            </nav>
+          </details>
+        </div>
+      </header>
 
       <main id="main" className="land-main">
         <section id="home" className="land-sheet-wrap">
@@ -160,84 +167,67 @@ export function Welcome() {
 
             <div className="land-hero">
               <div className="land-hero-copy">
-                <motion.p className="land-eyebrow" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease, delay: 0.05 }}>
-                  <span>Learn</span>
-                  <i aria-hidden />
-                  <span>Access</span>
-                  <i aria-hidden />
-                  <span>Achieve</span>
-                </motion.p>
+                <h1 className="land-title">Your class notes, in one place.</h1>
 
-                <motion.h1 className="land-title" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease, delay: 0.12 }}>
-                  MYCLASSROOM
-                </motion.h1>
+                <p className="land-tagline">Find the handout. Skip the group chat.</p>
 
-                <motion.p className="land-tagline" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease, delay: 0.24 }}>
-                  Your notes. Anytime.
-                </motion.p>
+                <p className="land-lede">
+                  A searchable library of your class notes — handouts, slide decks and chapter summaries, filed by class and
+                  subject. Flashcards and quizzes sit beside them when you want to practise.
+                </p>
 
-                <motion.p className="land-lede" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease, delay: 0.32 }}>
-                  A digital library for the notes your class has been given. Browse by class and subject, preview a document, and
-                  download what you need — without chasing a group chat.
-                </motion.p>
-
-                <motion.div className="land-actions" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease, delay: 0.4 }}>
-                  <a href={signIn} className="land-cta">
-                    <span>Get Started</span>
+                <div className="land-actions">
+                  <a href="/signin" className="land-cta">
+                    <span>Open the library</span>
                     <ArrowRight className="size-4" aria-hidden />
                   </a>
-                  <a href="#notes" className="land-cta-ghost">
-                    Explore the library
+                  <a href="#inside" className="land-cta-ghost">
+                    See what&apos;s inside
                     <ArrowUpRight className="size-4" aria-hidden />
                   </a>
-                </motion.div>
+                </div>
 
-                <motion.p className="land-fineprint" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.55 }}>
+                <p className="land-fineprint">
                   <Lock className="size-3.5" aria-hidden />
-                  Students read. Only the admin uploads and edits.
-                </motion.p>
+                  Only the site admin uploads and edits. Student accounts are read-only.
+                </p>
+
+                <p className="land-upload-note">
+                  Class material is uploaded only by the site admin, and only where they have the right to share it. Rights
+                  holders can request removal through the <a href="/copyright">Copyright page</a>.
+                </p>
               </div>
 
-              <motion.div className="land-hero-art" initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 1, ease, delay: 0.18 }} aria-hidden>
-                <HeroArt />
-              </motion.div>
+              <figure className="land-hero-art land-mock-figure">
+                <LibraryMockup />
+                <figcaption className="land-mock-caption">
+                  Illustration: search the notes library, then preview a document.
+                </figcaption>
+              </figure>
             </div>
 
             <div className="land-cards">
-              {features.map(({ icon: Icon, title, copy }, i) => (
-                <motion.article
-                  key={title}
-                  className="land-card"
-                  initial={{ opacity: 0, y: 18 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, amount: 0.4 }}
-                  transition={{ duration: 0.5, ease, delay: i * 0.06 }}
-                >
+              {features.map(({ icon: Icon, title, copy }) => (
+                <article key={title} className="land-card">
                   <span className="land-card-icon">
                     <Icon className="size-[18px]" aria-hidden />
                   </span>
                   <h2>{title}</h2>
                   <p>{copy}</p>
-                </motion.article>
+                </article>
               ))}
             </div>
 
-            <motion.div
-              className="land-panel"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.6, ease }}
-            >
+            <div className="land-panel">
               <span className="land-panel-dots" aria-hidden />
               <div className="land-panel-copy">
-                <p className="land-panel-eyebrow">Secure &amp; Reliable</p>
-                <h2>Your account, your progress, kept apart.</h2>
+                <p className="land-panel-eyebrow">Accounts and permissions</p>
+                <h2>Google sign-in. Admin-only uploads. Checked on the server.</h2>
                 <p>
-                  Sign-in runs through a real identity provider, and study progress is stored per person. Class material is served
-                  read-only, so a student account can never add, change or remove a document.
+                  Sign in with Google, or with a username and password. Every upload, edit and delete goes through an admin-only
+                  route that checks the account&apos;s role on the server, so a student account cannot change class material.
                 </p>
-                <a href={signIn} className="land-panel-cta">
+                <a href="/signin" className="land-panel-cta">
                   Open your library
                   <ArrowRight className="size-4" aria-hidden />
                 </a>
@@ -255,18 +245,18 @@ export function Welcome() {
                 </div>
                 <div className="land-figure-sheet land-figure-sheet--back" />
               </div>
-            </motion.div>
+            </div>
           </div>
         </section>
 
-        <section id="notes" className="land-section land-notes">
+        <section id="library" className="land-section land-notes">
           <div className="land-wrap land-section-grid">
             <div>
               <p className="land-kicker">The notes library</p>
               <h2 className="land-h2">Built to be searched, not scrolled.</h2>
               <p className="land-body">
-                The library is the centre of MyClassroom. Documents are filed by the class and subject they belong to, and the page
-                is a working archive: search, filter, preview, download.
+                The library is the centre of MyClassroom. Documents are filed by the class and subject they belong to, and the
+                page works like an archive: search, filter, preview, download.
               </p>
               <ul className="land-list">
                 <li>
@@ -286,12 +276,12 @@ export function Welcome() {
                 <li>
                   <Lock className="size-4" aria-hidden />
                   <span>
-                    <strong>Read-only by design</strong>
-                    Only the site admin can upload or delete. Permissions are enforced by the server, not by a hidden button.
+                    <strong>Read-only for students</strong>
+                    Only the site admin can upload or delete. That limit is enforced by the server, not by hiding a button.
                   </span>
                 </li>
               </ul>
-              <a href={signIn} className="land-inline-cta">
+              <a href="/signin" className="land-inline-cta">
                 Sign in to browse
                 <ArrowRight className="size-4" aria-hidden />
               </a>
@@ -333,74 +323,45 @@ export function Welcome() {
             <p className="land-kicker">How it works</p>
             <h2 className="land-h2">Three quiet steps, every term.</h2>
             <div className="land-steps">
-              {steps.map((step, i) => (
-                <motion.article
-                  key={step.n}
-                  className="land-step"
-                  initial={{ opacity: 0, y: 18 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, amount: 0.5 }}
-                  transition={{ duration: 0.5, ease, delay: i * 0.08 }}
-                >
+              {steps.map((step) => (
+                <article key={step.n} className="land-step">
                   <span className="land-step-n">{step.n}</span>
                   <h3>{step.title}</h3>
                   <p>{step.copy}</p>
-                </motion.article>
+                </article>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="land-section land-latest">
+        <section id="inside" className="land-section land-latest">
           <div className="land-wrap">
             <div className="land-latest-head">
               <div>
-                <p className="land-kicker">Latest resources</p>
-                <h2 className="land-h2">What is in the library right now.</h2>
+                <p className="land-kicker">What&apos;s in the library</p>
+                <h2 className="land-h2">An example of what you will find.</h2>
               </div>
               <p className="land-latest-note">
-                {library.data && library.data.notes > 0
-                  ? `${library.data.notes} ${library.data.notes === 1 ? 'document' : 'documents'} across ${library.data.subjects || 1} ${library.data.subjects === 1 ? 'subject' : 'subjects'}.`
-                  : 'A live view of the archive — never sample data.'}
+                Example only. Real class material appears after you sign in — it is never shown to logged-out visitors.
               </p>
             </div>
 
-            {library.isLoading && (
-              <div className="land-latest-list" aria-busy>
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="land-latest-row land-latest-row--skeleton" />
-                ))}
+            <div className="land-latest-list">
+              <div className="land-latest-row land-latest-row--example">
+                <span className="land-latest-kind">PDF</span>
+                <span className="land-latest-body">
+                  <strong>Cell Structure — Chapter 4</strong>
+                  <span>Biology · Class 10</span>
+                </span>
+                <span className="land-latest-date">12 Nov 2026</span>
+                <span className="land-example-badge">Example</span>
               </div>
-            )}
+            </div>
 
-            {!library.isLoading && library.data && library.data.recent.length > 0 && (
-              <div className="land-latest-list">
-                {library.data.recent.map((item, i) => (
-                  <motion.div
-                    key={`${item.name}-${item.uploadedAt}`}
-                    className="land-latest-row"
-                    initial={{ opacity: 0, y: 12 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, amount: 0.6 }}
-                    transition={{ duration: 0.45, ease, delay: i * 0.06 }}
-                  >
-                    <span className="land-latest-kind">{kindOf(item.contentType)}</span>
-                    <span className="land-latest-body">
-                      <strong>{item.name}</strong>
-                      <span>{[item.subject, item.className].filter(Boolean).join(' · ') || 'Class material'}</span>
-                    </span>
-                    <span className="land-latest-date">{formatDate(item.uploadedAt)}</span>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-
-            {!library.isLoading && (!library.data || library.data.recent.length === 0) && (
-              <div className="land-latest-empty">
-                <BookOpen className="size-5" aria-hidden />
-                <p>The archive is empty today. Sign in — new notes appear here the moment they are uploaded.</p>
-              </div>
-            )}
+            <a href="/signin" className="land-inline-cta">
+              Sign in to see your class library
+              <ArrowRight className="size-4" aria-hidden />
+            </a>
           </div>
         </section>
 
@@ -430,13 +391,13 @@ export function Welcome() {
               </article>
             </div>
             <div>
-              <p className="land-kicker">Resources</p>
-              <h2 className="land-h2">A small toolkit. Not a maze.</h2>
+              <p className="land-kicker">Practice resources</p>
+              <h2 className="land-h2">A small toolkit beside the notes.</h2>
               <p className="land-body">
                 Everything that is not the notes themselves sits beside them: the class decks, the files attached to your cards,
                 and the small set of numbers that tell you what to revise next.
               </p>
-              <a href={signIn} className="land-inline-cta">
+              <a href="/signin" className="land-inline-cta">
                 See your resources
                 <ArrowRight className="size-4" aria-hidden />
               </a>
@@ -448,12 +409,12 @@ export function Welcome() {
           <div className="land-wrap">
             <div className="land-quiz-head">
               <div>
-                <p className="land-kicker">Quizzes</p>
-                <h2 className="land-h2">Practice, when you want it.</h2>
+                <p className="land-kicker">Practice</p>
+                <h2 className="land-h2">When you want to test yourself.</h2>
               </div>
               <p className="land-quiz-note">
-                Quizzes are a second feature, not the front door. They sit inside a deck you are already reading — nothing to set
-                up, nothing to configure.
+                Flashcards and quizzes are the second half of MyClassroom, not the front door. They sit inside a deck you are
+                already reading — nothing to set up, nothing to configure.
               </p>
             </div>
             <div className="land-practice">
@@ -493,14 +454,16 @@ export function Welcome() {
               <h2 className="land-h2">What this is.</h2>
               <p className="land-body">
                 MyClassroom is an independent study tool. Class notes are kept as a searchable library, decks add a way to work
-                through a topic, and each person's progress is held separately from everyone else's.
+                through a topic, and each person&apos;s progress is held separately from everyone else&apos;s.
               </p>
               <p className="land-body">
-                It is built and run by an individual developer — not by a school, college, coaching centre or board. Material is
-                uploaded by the person who runs this site and is not checked, approved or endorsed by any institution.
+                It is built and run by an individual developer — not by a school, college, coaching centre or board. Class material
+                is uploaded only by the site admin, who confirms they have the right to share it; it is not checked, approved or
+                endorsed by any institution.
               </p>
               <p className="land-body land-body--muted">
-                Questions, takedowns and privacy requests go through the <Link to="/contact">contact page</Link>, or by email to{' '}
+                If you hold rights to something here, use the <a href="/copyright">Copyright page</a> to request removal.
+                Questions and privacy requests go through the <a href="/contact">contact page</a>, or by email to{' '}
                 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
               </p>
               <div className="land-about-tags">
@@ -510,11 +473,11 @@ export function Welcome() {
                 </span>
                 <span>
                   <Lock className="size-3.5" aria-hidden />
-                  Private by default
+                  Read-only for students
                 </span>
                 <span>
                   <UsersRound className="size-3.5" aria-hidden />
-                  Read-only for students
+                  Server-checked permissions
                 </span>
               </div>
             </div>
@@ -530,33 +493,35 @@ export function Welcome() {
                 <BookOpen className="size-4" />
               </span>
               <p className="land-footer-name">MyClassroom</p>
-              <p className="land-footer-copy">A read-only class notes library, built for students who would rather revise than search.</p>
+              <p className="land-footer-copy">
+                A searchable class notes library, with flashcards and quizzes for the revision that comes after.
+              </p>
             </div>
             <nav aria-label="Platform">
               <h2>Platform</h2>
               <a href="#home">Home</a>
-              <a href="#notes">Class notes</a>
-              <a href="#resources">Resources</a>
-              <a href="#quizzes">Quizzes</a>
+              <a href="#library">Class notes</a>
+              <a href="#quizzes">Practice</a>
+              <a href="#about">About</a>
             </nav>
             <nav aria-label="Support">
               <h2>Support</h2>
-              <Link to="/contact">Contact</Link>
+              <a href="/contact">Contact</a>
               <a href={`mailto:${CONTACT_EMAIL}`}>Email the operator</a>
-              <a href={signIn}>Sign in</a>
+              <a href="/signin">Sign in</a>
             </nav>
             <nav aria-label="Legal">
               <h2>Legal</h2>
               {LEGAL_PAGES.filter((page) => page.to !== '/contact').map((page) => (
-                <Link key={page.to} to={page.to}>
+                <a key={page.to} href={page.to}>
                   {page.label}
-                </Link>
+                </a>
               ))}
             </nav>
           </div>
           <div className="land-footer-base">
             <p>{DISCLAIMER}</p>
-            <p className="land-footer-sign">MyClassroom · study smarter</p>
+            <p className="land-footer-sign">MyClassroom · class notes, in one place</p>
           </div>
         </div>
       </footer>
@@ -564,142 +529,95 @@ export function Welcome() {
   )
 }
 
-/* ---------------------------------------------------------------------------
-   The centrepiece. It is one inline SVG: a crystal open book with a
-   graduation cap floating above it, rings of ice behind, and a soft grounded
-   reflection. All motion is CSS transforms on three groups, so the browser
-   animates it on the compositor and no frame runs JavaScript.
-   ------------------------------------------------------------------------- */
-function HeroArt() {
+/* An honest mockup rather than a screenshot: it shows the search field, the
+   result rows and the preview pane the library actually offers, using made-up
+   classwork names. It is labelled as an illustration in the caption. */
+function LibraryMockup() {
   return (
-    <div className="land-art">
-      <span className="land-art-halo" aria-hidden />
-      <svg viewBox="0 0 620 540" className="land-art-svg" role="img" aria-label="A crystal open book with a graduation cap floating above it, lit from within">
-        <defs>
-          <linearGradient id="la-page-l" x1="0.1" y1="0" x2="0.9" y2="1">
-            <stop stopColor="#ffffff" />
-            <stop offset="0.45" stopColor="#e8f4ff" />
-            <stop offset="1" stopColor="#b9d9f6" />
-          </linearGradient>
-          <linearGradient id="la-page-r" x1="0.9" y1="0" x2="0.1" y2="1">
-            <stop stopColor="#ffffff" />
-            <stop offset="0.5" stopColor="#dcefff" />
-            <stop offset="1" stopColor="#a9cdf1" />
-          </linearGradient>
-          <linearGradient id="la-cover" x1="0" y1="0" x2="0.6" y2="1">
-            <stop stopColor="#2f68c9" />
-            <stop offset="0.42" stopColor="#17419f" />
-            <stop offset="1" stopColor="#0a2361" />
-          </linearGradient>
-          <linearGradient id="la-cover-dark" x1="0" y1="0" x2="0.5" y2="1">
-            <stop stopColor="#12306f" />
-            <stop offset="1" stopColor="#061733" />
-          </linearGradient>
-          <linearGradient id="la-cap" x1="0.15" y1="0" x2="0.85" y2="1">
-            <stop stopColor="#5b9be8" />
-            <stop offset="0.45" stopColor="#24558f" />
-            <stop offset="1" stopColor="#0b2a63" />
-          </linearGradient>
-          <linearGradient id="la-cap-top" x1="0.2" y1="0" x2="0.8" y2="1">
-            <stop stopColor="#8fc4f5" />
-            <stop offset="0.35" stopColor="#2f6bbf" />
-            <stop offset="1" stopColor="#10306f" />
-          </linearGradient>
-          <linearGradient id="la-tassel" x1="0" y1="0" x2="1" y2="1">
-            <stop stopColor="#ffe8a8" />
-            <stop offset="0.5" stopColor="#e9c265" />
-            <stop offset="1" stopColor="#b98f2c" />
-          </linearGradient>
-          <linearGradient id="la-crystal" x1="0" y1="0" x2="0.8" y2="1">
-            <stop stopColor="#ffffff" />
-            <stop offset="0.35" stopColor="#c9e4fb" />
-            <stop offset="0.75" stopColor="#7cb4e8" />
-            <stop offset="1" stopColor="#3c79b8" />
-          </linearGradient>
-          <radialGradient id="la-glow" cx="0.5" cy="0.5" r="0.5">
-            <stop stopColor="#7dc0f8" stopOpacity="0.55" />
-            <stop offset="0.55" stopColor="#a8d6ff" stopOpacity="0.22" />
-            <stop offset="1" stopColor="#cfe8ff" stopOpacity="0" />
-          </radialGradient>
-          <radialGradient id="la-floor" cx="0.5" cy="0.5" r="0.5">
-            <stop stopColor="#0a2361" stopOpacity="0.22" />
-            <stop offset="1" stopColor="#0a2361" stopOpacity="0" />
-          </radialGradient>
-          <filter id="la-soft" x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="16" />
-          </filter>
-          <filter id="la-tight" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="10" stdDeviation="12" floodColor="#0a2361" floodOpacity="0.22" />
-          </filter>
-        </defs>
+    <svg
+      viewBox="0 0 540 420"
+      className="land-mock"
+      role="img"
+      aria-labelledby="land-mock-title land-mock-desc"
+    >
+      <title id="land-mock-title">Illustration of the MyClassroom library</title>
+      <desc id="land-mock-desc">
+        A search field, class and subject filters, three example note rows and a document preview pane.
+      </desc>
+      <defs>
+        <linearGradient id="land-mock-page" x1="0" y1="0" x2="0.6" y2="1">
+          <stop stopColor="#ffffff" />
+          <stop offset="1" stopColor="#f2f8ff" />
+        </linearGradient>
+        <filter id="land-mock-shadow" x="-20%" y="-20%" width="140%" height="150%">
+          <feDropShadow dx="0" dy="16" stdDeviation="18" floodColor="#061733" floodOpacity="0.18" />
+        </filter>
+      </defs>
 
-        <ellipse cx="310" cy="270" rx="250" ry="220" fill="url(#la-glow)" />
+      <rect x="14" y="12" width="512" height="368" rx="20" fill="url(#land-mock-page)" filter="url(#land-mock-shadow)" stroke="#d7e5f4" />
+      <circle cx="38" cy="36" r="4" fill="#c8d9ee" />
+      <circle cx="52" cy="36" r="4" fill="#c8d9ee" />
+      <circle cx="66" cy="36" r="4" fill="#c8d9ee" />
+      <rect x="88" y="31" width="150" height="10" rx="5" fill="#e3eefb" />
 
-        <g className="land-crystal">
-          <path d="M104 402 140 246 178 404Z" fill="url(#la-crystal)" opacity="0.55" />
-          <path d="m140 246 38 158-20-24Z" fill="#ffffff" opacity="0.5" />
-          <path d="M176 408 202 300 236 410Z" fill="url(#la-crystal)" opacity="0.35" />
-          <path d="M452 404 486 262 520 406Z" fill="url(#la-crystal)" opacity="0.42" />
-          <path d="m486 262 34 144-16-26Z" fill="#ffffff" opacity="0.45" />
-          <path d="M524 412 546 330 570 414Z" fill="url(#la-crystal)" opacity="0.25" />
-        </g>
+      <rect x="34" y="60" width="212" height="34" rx="10" fill="#ffffff" stroke="#cfe0f2" />
+      <circle cx="52" cy="77" r="5.5" fill="none" stroke="#6c8aa8" strokeWidth="1.6" />
+      <path d="m56 81 4 4" stroke="#6c8aa8" strokeWidth="1.6" strokeLinecap="round" />
+      <text x="68" y="81" fill="#6c8aa8" fontSize="11" fontFamily="Plus Jakarta Sans Variable, system-ui, sans-serif">
+        Search notes
+      </text>
 
-        <g filter="url(#la-tight)">
-          <g className="land-cap">
-            <path d="M310 96 214 140 310 184 406 140Z" fill="url(#la-cap-top)" />
-            <path d="M310 96 214 140 310 184Z" fill="#ffffff" opacity="0.16" />
-            <path d="M310 96 406 140 310 184Z" fill="#061733" opacity="0.12" />
-            <path d="M222 146 310 188 398 146 398 170C360 198 260 198 222 170Z" fill="url(#la-cap)" />
-            <path d="M222 146 310 188 398 146" stroke="#a8cef3" strokeWidth="1.1" opacity="0.55" />
-            <ellipse cx="310" cy="150" rx="4" ry="2.6" fill="#dbeaf9" />
-            <path d="M313 151c22 8 32 34 36 62" stroke="url(#la-tassel)" strokeWidth="3.4" strokeLinecap="round" fill="none" />
-            <path d="m349 213 5 20 7-18 5 22 4-20" stroke="url(#la-tassel)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            <path d="M310 96 214 140 310 184 406 140Z" stroke="#cfe4f8" strokeWidth="0.9" opacity="0.5" fill="none" />
-          </g>
-        </g>
+      <rect x="258" y="60" width="66" height="34" rx="10" fill="#dce8ff" />
+      <text x="272" y="81" fill="#17419f" fontSize="10.5" fontWeight="600" fontFamily="Plus Jakarta Sans Variable, system-ui, sans-serif">
+        Class 10
+      </text>
+      <rect x="332" y="60" width="58" height="34" rx="10" fill="#e9f2fd" />
+      <text x="345" y="81" fill="#47688c" fontSize="10.5" fontFamily="Plus Jakarta Sans Variable, system-ui, sans-serif">
+        Biology
+      </text>
 
-        <ellipse cx="310" cy="404" rx="196" ry="30" fill="#0a2361" opacity="0.14" filter="url(#la-soft)" />
+      <line x1="34" y1="110" x2="332" y2="110" stroke="#e3eefb" />
 
-        {/* A soft column of light ties the cap to the open pages. */}
-        <path d="M268 206h84l46 148c-58 26-118 26-176 0Z" fill="url(#la-glow)" opacity="0.5" />
-        <path d="M300 210h20l10 150c-14 4-26 4-40 0Z" fill="#ffffff" opacity="0.16" />
+      <g fontFamily="Plus Jakarta Sans Variable, system-ui, sans-serif">
+        <rect x="34" y="124" width="298" height="52" rx="11" fill="#dce8ff" />
+        <rect x="46" y="136" width="28" height="28" rx="7" fill="#ffffff" />
+        <text x="55" y="155" fill="#17419f" fontSize="8" fontWeight="700">PDF</text>
+        <text x="84" y="146" fill="#05162f" fontSize="11.5" fontWeight="600">Cell Structure — Chapter 4</text>
+        <text x="84" y="162" fill="#6c8aa8" fontSize="9.5">Biology · Class 10</text>
 
-        <g className="land-book">
-          <g filter="url(#la-tight)">
-            <path d="M302 300C244 276 172 280 116 308v18c56-28 128-32 186-8Z" fill="url(#la-cover-dark)" />
-            <path d="M318 300c58-24 130-20 186 8v18c-56-28-128-32-186-8Z" fill="url(#la-cover-dark)" />
-            <path d="M302 300C244 276 172 280 116 308l-4 104c56-30 128-34 190-10Z" fill="url(#la-cover)" />
-            <path d="M318 300c58-24 130-20 186 8l4 104c-56-30-128-34-190-10Z" fill="url(#la-cover)" />
-            <path d="M306 302C252 282 184 286 130 312v96c54-26 122-30 176-10Z" fill="url(#la-page-l)" />
-            <path d="M314 302c54-20 122-16 176 10v96c-54-26-122-30-176-10Z" fill="url(#la-page-r)" />
-            <path d="M306 302C252 282 184 286 130 312" stroke="#ffffff" strokeWidth="1.6" opacity="0.9" fill="none" />
-            <path d="M314 302c54-20 122-16 176 10" stroke="#ffffff" strokeWidth="1.6" opacity="0.85" fill="none" />
-            <path d="M146 330c44-18 100-16 148 2M146 352c44-18 100-16 148 2M146 374c44-18 100-16 148 2M146 396c40-16 92-15 136 0" stroke="#8fb8dc" strokeWidth="1" opacity="0.5" fill="none" />
-            <path d="M474 330c-44-18-100-16-148 2M474 352c-44-18-100-16-148 2M474 374c-44-18-100-16-148 2M474 396c-40-16-92-15-136 0" stroke="#8fb8dc" strokeWidth="1" opacity="0.45" fill="none" />
-            <path d="M310 296v112" stroke="#0b2a63" strokeWidth="7" opacity="0.35" />
-            <path d="M310 296v112" stroke="#eaf5ff" strokeWidth="1.4" opacity="0.9" />
-            {/* Page block: a few edges under the front cover read as thickness. */}
-            <path d="M130 414c56-26 122-30 176-10" stroke="#cfe4f8" strokeWidth="3" opacity="0.55" fill="none" />
-            <path d="M130 420c56-26 122-30 176-10" stroke="#a9cdf1" strokeWidth="2" opacity="0.4" fill="none" />
-            <path d="M490 414c-56-26-122-30-176-10" stroke="#cfe4f8" strokeWidth="3" opacity="0.5" fill="none" />
-            <path d="M490 420c-56-26-122-30-176-10" stroke="#a9cdf1" strokeWidth="2" opacity="0.35" fill="none" />
-            {/* The ribbon marker hangs out of the spine. */}
-            <path d="M303 402h13l-2 36-4.5-6-6.5 6Z" fill="url(#la-tassel)" opacity="0.92" />
-            <path d="M302 300C244 276 172 280 116 308l-4 104c56-30 128-34 190-10" stroke="#cfe4f8" strokeWidth="1.6" opacity="0.6" fill="none" />
-            <path d="M318 300c58-24 130-20 186 8l4 104c-56-30-128-34-190-10" stroke="#cfe4f8" strokeWidth="1.6" opacity="0.55" fill="none" />
-          </g>
-        </g>
+        <rect x="34" y="184" width="298" height="52" rx="11" fill="#e9f2fd" />
+        <rect x="46" y="196" width="28" height="28" rx="7" fill="#ffffff" />
+        <text x="55" y="215" fill="#17419f" fontSize="8" fontWeight="700">PDF</text>
+        <text x="84" y="206" fill="#05162f" fontSize="11.5" fontWeight="600">Trigonometry Notes</text>
+        <text x="84" y="222" fill="#6c8aa8" fontSize="9.5">Mathematics · Class 10</text>
 
-        <g className="land-motes" fill="#ffffff">
-          <circle cx="196" cy="196" r="2.4" opacity="0.85" />
-          <circle cx="436" cy="228" r="2" opacity="0.7" />
-          <circle cx="470" cy="150" r="1.6" opacity="0.55" />
-          <circle cx="150" cy="252" r="1.8" opacity="0.6" />
-          <circle cx="352" cy="120" r="1.5" opacity="0.5" />
-        </g>
+        <rect x="34" y="244" width="298" height="52" rx="11" fill="#e9f2fd" />
+        <rect x="46" y="256" width="28" height="28" rx="7" fill="#ffffff" />
+        <text x="53" y="275" fill="#17419f" fontSize="7.5" fontWeight="700">PPT</text>
+        <text x="84" y="266" fill="#05162f" fontSize="11.5" fontWeight="600">The Cold War</text>
+        <text x="84" y="282" fill="#6c8aa8" fontSize="9.5">History · Class 10</text>
+      </g>
 
-        <ellipse cx="310" cy="470" rx="150" ry="16" fill="url(#la-floor)" className="land-book-reflection" />
-      </svg>
-    </div>
+      <rect x="346" y="124" width="160" height="172" rx="12" fill="#ffffff" stroke="#d7e5f4" />
+      <text x="360" y="144" fill="#47688c" fontSize="9.5" fontWeight="600" fontFamily="Plus Jakarta Sans Variable, system-ui, sans-serif">
+        Preview
+      </text>
+      <rect x="360" y="156" width="132" height="112" rx="6" fill="#f7fbff" />
+      <rect x="370" y="168" width="74" height="8" rx="4" fill="#c8d9ee" />
+      <rect x="370" y="184" width="112" height="5" rx="2.5" fill="#dbe8f6" />
+      <rect x="370" y="195" width="104" height="5" rx="2.5" fill="#dbe8f6" />
+      <rect x="370" y="206" width="110" height="5" rx="2.5" fill="#dbe8f6" />
+      <rect x="370" y="217" width="80" height="5" rx="2.5" fill="#dbe8f6" />
+      <rect x="370" y="233" width="56" height="18" rx="6" fill="#dce8ff" />
+      <text x="360" y="288" fill="#6c8aa8" fontSize="8.5" fontFamily="Plus Jakarta Sans Variable, system-ui, sans-serif">
+        Example document
+      </text>
+
+      <rect x="34" y="318" width="472" height="42" rx="12" fill="#0f2f7a" />
+      <text x="50" y="344" fill="#ffffff" fontSize="10.5" fontWeight="600" fontFamily="Plus Jakarta Sans Variable, system-ui, sans-serif">
+        Search, preview and download — all in one place
+      </text>
+      <path d="M470 334h12m-4-4 4 4-4 4" stroke="#a9d3f8" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }

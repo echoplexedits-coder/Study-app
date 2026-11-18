@@ -15,7 +15,6 @@ import { adminLegal } from './routes/admin-legal'
 import { contactHandler, legal, requireConsent } from './routes/legal'
 import { mailConfigured } from './mail'
 import { notes } from './routes/notes'
-import { publicRoutes } from './routes/public'
 
 const app = new Hono<AppContext>()
 
@@ -61,6 +60,25 @@ app.get('/api/auth/status', (c) => {
 })
 app.get('/api/health', (c) => c.json({ ok: true }))
 
+// Signed-out visitors get a fully rendered landing page, so the title,
+// description and body copy are in the served HTML without JavaScript. A
+// request carrying a session cookie gets the app shell instead, where auth
+// resolves and "/" becomes the signed-in library. Cookie-less crawlers and
+// visitors never see any class material in that static page.
+app.get('/', async (c, next) => {
+  if (import.meta.env.DEV) return next()
+  if (c.req.header('cookie')) return next()
+  const url = new URL(c.req.url)
+  // The assets layer redirects .html paths to their extensionless form, so
+  // fetch /landing and keep the visitor on /.
+  url.pathname = '/landing'
+  const response = await c.env.ASSETS.fetch(new Request(url, c.req.raw))
+  const headers = new Headers(response.headers)
+  headers.set('cache-control', 'public, max-age=0, must-revalidate')
+  headers.set('vary', 'Cookie')
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+})
+
 // Optional Google OAuth.
 app.get('/auth/google/start', googleStart)
 app.get('/auth/google/callback', googleCallback)
@@ -70,10 +88,6 @@ app.post('/auth/google/signout', googleSignout)
 // way to reach the operator without an account. It is registered before the
 // signed-in middleware below, so it never requires a session.
 app.post('/api/legal/contact', requireDb, contactHandler)
-
-// The landing page's "latest resources" band reads this. It exposes counts and
-// three recent titles only — never a key, a size or a download.
-app.route('/api', publicRoutes)
 
 // Auth routes are registered before the signed-in gate: checking a username,
 // registering, signing in and resetting a password all start without a session.

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/postbuild.mjs",
+    "build": "vite build && vite build --config vite.ssr.config.ts && node scripts/prerender.mjs && node scripts/postbuild.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
