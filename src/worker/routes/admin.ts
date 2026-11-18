@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 
 import { privateJson } from '../auth'
 import { logAudit, now, requireAdmin } from '../db'
+import { listR2Objects } from '../r2'
 import type { AppContext } from '../env'
 
 /**
@@ -82,15 +83,47 @@ admin.get('/admin/backup', requireAdmin, async (c) => {
     db.prepare(`SELECT email, role, created_at FROM roles ORDER BY email`),
     db.prepare(`SELECT * FROM sessions ORDER BY created_at`),
   ])
-  c.header('content-disposition', `attachment; filename="myclassroom-backup-${new Date().toISOString().slice(0, 10)}.json"`)
+  // The database rows are the backup. R2 bytes are not copied into the JSON:
+  // list their keys and sizes so the owner can copy the objects separately.
+  const objects = c.env.FILES ? await listR2Objects(c.env.FILES) : []
+  const exportedAt = now()
+  const totalBytes = objects.reduce((sum, object) => sum + object.size, 0)
+  await logAudit(db, c.get('user'), 'backup.export', null, `${objects.length} R2 objects, ${totalBytes} bytes, manifest only`)
+  c.header('content-disposition', `attachment; filename="myclassroom-backup-${new Date(exportedAt).toISOString().slice(0, 10)}.json"`)
   return privateJson(c, {
     version: 2,
-    exportedAt: now(),
+    exportedAt,
     decks: decks.results,
     cards: cards.results,
     progress: progress.results,
     roles: roles.results,
     sessions: sessions.results,
+    r2: {
+      note: 'Key/size manifest only. File bytes are not included in this JSON and must be copied separately from the bucket or the file routes.',
+      available: Boolean(c.env.FILES),
+      totalFiles: objects.length,
+      totalBytes,
+      objects: objects.map((object) => ({
+        key: object.key,
+        size: object.size,
+        uploadedAt: object.uploaded.getTime(),
+        contentType: object.httpMetadata?.contentType ?? null,
+      })),
+    },
+  })
+})
+
+/** The Settings page uses this to remind the owner to take a fresh copy. */
+admin.get('/admin/backup/status', requireAdmin, async (c) => {
+  const row = await c.get('db')
+    .prepare(`SELECT MAX(created_at) AS last FROM audit_log WHERE action = 'backup.export'`)
+    .first<{ last: number | null }>()
+  const lastBackupAt = row?.last ? Number(row.last) : null
+  const days = 7
+  return privateJson(c, {
+    lastBackupAt,
+    reminderDays: days,
+    stale: !lastBackupAt || now() - lastBackupAt > days * 86_400_000,
   })
 })
 

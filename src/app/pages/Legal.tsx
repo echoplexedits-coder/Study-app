@@ -270,7 +270,7 @@ const PRIVACY: Section[] = [
       `Consent records: while the account exists, plus any period needed to show that consent was obtained.`,
       `Reports and messages: while they are needed to handle the issue and for safety, then deleted or stripped of identifying details.`,
       `Audit records: kept as a security trail; when an account is deleted, the email address is removed and the account id remains.`,
-      `Backups: the admin can download a JSON snapshot. A downloaded copy may exist outside the service and is not deleted automatically. Ask through the Contact page and the operator will remove it where it can be identified.`,
+      `Backups: the admin can download a JSON snapshot of the database rows with an R2 key/size manifest. The file bytes are not included in that JSON and have to be copied separately. A downloaded copy may exist outside the service and is not deleted automatically. Ask through the Contact page and the operator will remove it where it can be identified.`,
     ],
   },
   {

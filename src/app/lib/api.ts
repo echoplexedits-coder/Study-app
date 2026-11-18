@@ -84,6 +84,31 @@ export function acceptPolicies(input: { version: string; terms: boolean; privacy
 }
 
 /** Downloads a copy of everything the server holds about the signed-in person. */
+export async function downloadAdminBackup(): Promise<string> {
+  const response = await fetch('/api/admin/backup', { credentials: 'same-origin', headers: { accept: 'application/json' } })
+  if (!response.ok) {
+    let message = 'The backup could not be exported.'
+    try {
+      const body = (await response.json()) as { message?: string; error?: string }
+      message = body.message ?? body.error ?? message
+    } catch {
+      /* no body */
+    }
+    throw new ApiError(response.status, message)
+  }
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'myclassroom-backup.json'
+  const url = URL.createObjectURL(await response.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return name
+}
+
 export async function downloadMyData(): Promise<string> {
   const response = await fetch('/api/legal/export', { credentials: 'same-origin', headers: { accept: 'application/json' } })
   if (!response.ok) {
@@ -278,6 +303,14 @@ export const useAdminUsers = (query: string, page: number) =>
 
 export const useResetRequests = (enabled: boolean) =>
   useQuery({ queryKey: ['reset-requests'], queryFn: () => api<{ requests: ResetRequest[] }>('/admin/reset-requests'), enabled, staleTime: 15_000 })
+
+export const useAdminBackupStatus = (enabled: boolean) =>
+  useQuery({
+    queryKey: ['backup-status'],
+    queryFn: () => api<{ lastBackupAt: number | null; reminderDays: number; stale: boolean }>('/admin/backup/status'),
+    enabled,
+    staleTime: 30_000,
+  })
 
 export function setAccountStatus(sub: string, status: 'active' | 'suspended') {
   return api<{ ok: true; status: string }>(`/admin/users/${encodeURIComponent(sub)}/status`, { method: 'POST', json: { status } })

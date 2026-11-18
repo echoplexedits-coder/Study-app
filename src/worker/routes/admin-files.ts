@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { privateJson } from '../auth'
 import { logAudit, requireAdmin } from '../db'
 import { signatureOk } from '../files'
+import { listR2Objects } from '../r2'
 import type { AppContext } from '../env'
 import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
 
@@ -38,20 +39,6 @@ const MAX_MB = Math.round(MAX_ATTACHMENT_BYTES / (1024 * 1024))
 // against the bytes actually present in the bucket.
 const R2_LIMIT_BYTES = 1024 * 1024 * 1024
 const R2_WARN_RATIO = 0.8
-
-async function listObjects(bucket: R2Bucket): Promise<R2Object[]> {
-  const objects: R2Object[] = []
-  let cursor: string | undefined
-  while (true) {
-    const result = cursor
-      ? await bucket.list({ cursor, include: ['httpMetadata'] })
-      : await bucket.list({ include: ['httpMetadata'] })
-    objects.push(...result.objects)
-    if (!result.truncated) break
-    cursor = result.cursor
-  }
-  return objects
-}
 
 function usageFor(objects: R2Object[]) {
   const bytes = objects.reduce((sum, object) => sum + object.size, 0)
@@ -94,7 +81,7 @@ adminFiles.get('/admin/files', requireAdmin, async (c) => {
   if (!c.env.FILES) {
     return c.json({ error: 'storage_missing', message: 'No file storage is attached yet.' }, 503)
   }
-  const objects = await listObjects(c.env.FILES)
+  const objects = await listR2Objects(c.env.FILES)
   const files = objects
     .filter((entry) => !isLibraryObject(entry.key))
     .map((entry) => ({
@@ -125,7 +112,7 @@ adminFiles.post('/admin/files', requireAdmin, async (c) => {
   if (file.size > MAX_ATTACHMENT_BYTES) {
     return c.json({ error: 'file_too_large', message: `Files are limited to ${MAX_MB} MB.` }, 413)
   }
-  const existing = await listObjects(c.env.FILES)
+  const existing = await listR2Objects(c.env.FILES)
   const used = existing.reduce((sum, object) => sum + object.size, 0)
   if (used + file.size > R2_LIMIT_BYTES) {
     return c.json(

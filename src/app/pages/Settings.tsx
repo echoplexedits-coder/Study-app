@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { AccountSettings } from '../components/AccountSettings'
 import { LegalSafety } from '../components/LegalSafety'
 import { Avatar, Badge, Button, ConfirmDialog, Input, useToast } from '../components/ui'
-import { api, useApiMutation, useMe, useStorage } from '../lib/api'
+import { api, downloadAdminBackup, useAdminBackupStatus, useApiMutation, useMe, useStorage } from '../lib/api'
 import { signOut } from '../lib/auth'
 import { UploadDashboard } from './UploadDashboard'
 
@@ -13,6 +13,9 @@ interface RoleRow {
   created_at: number
 }
 
+
+const when = (ts: number | null) =>
+  ts ? new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never'
 
 function bytes(value: number): string {
   if (value < 1024) return `${value} B`
@@ -29,12 +32,14 @@ function bytes(value: number): string {
 export function Settings() {
   const { data: me } = useMe()
   const { data: storage } = useStorage()
+  const { data: backup, refetch: refetchBackup } = useAdminBackupStatus(Boolean(me?.capabilities.canEdit))
   const toast = useToast()
   const [roles, setRoles] = useState<RoleRow[]>([])
   const [newEmail, setNewEmail] = useState('')
   const [newRole, setNewRole] = useState<'admin' | 'student'>('student')
   const [savingRole, setSavingRole] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [backingUp, setBackingUp] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const [addError, setAddError] = useState('')
@@ -68,6 +73,19 @@ export function Settings() {
   }, [me?.capabilities.canEdit])
 
   if (!me) return null
+
+  const downloadBackup = async () => {
+    setBackingUp(true)
+    try {
+      const name = await downloadAdminBackup()
+      toast(`Downloaded ${name}`)
+      await refetchBackup()
+    } catch (error) {
+      toast((error as Error).message, 'danger')
+    } finally {
+      setBackingUp(false)
+    }
+  }
 
   const loadRoles = async () => {
     try {
@@ -273,6 +291,27 @@ export function Settings() {
       <section className="mt-8">
         <h2 className="text-[14px] font-semibold">Data</h2>
         <div className="mt-3 divide-y divide-line rounded-card bg-surface shadow-card">
+          {me.capabilities.canEdit && (
+            <div className="flex flex-wrap items-center gap-3 p-4">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13.5px] font-medium">Backup</span>
+                <span className="block text-[12.5px] text-muted">
+                  Decks, cards, progress, roles and sessions, plus an R2 key/size manifest. File bytes are not in the JSON; copy those separately.
+                </span>
+                <span className={`mt-1 block text-[12px] ${backup?.stale ? 'text-warning' : 'text-faint'}`}>
+                  Last backup: {when(backup?.lastBackupAt ?? null)}.
+                  {backup?.stale
+                    ? backup.lastBackupAt
+                      ? ' Older than 7 days — download a fresh copy.'
+                      : ' No backup recorded yet — download one before making changes.'
+                    : ''}
+                </span>
+              </span>
+              <Button onClick={downloadBackup} loading={backingUp}>
+                Download backup
+              </Button>
+            </div>
+          )}
           {me.capabilities.canEdit && (
             <div className="flex items-center gap-3 p-4">
               <span className="min-w-0 flex-1">
