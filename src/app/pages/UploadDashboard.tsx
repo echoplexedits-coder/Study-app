@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Archive, FileText, Image, Trash2, Upload, X } from 'lucide-react'
 import { Button, ConfirmDialog, Input, useToast } from '../components/ui'
 import { api } from '../lib/api'
+import type { StorageUsage } from '../../shared/types'
 
 interface UploadedFile {
   name: string
@@ -76,6 +77,7 @@ function parseFileKey(key: string): ParsedFile {
 export function UploadDashboard() {
   const toast = useToast()
   const [files, setFiles] = useState<UploadedFile[]>([])
+  const [usage, setUsage] = useState<StorageUsage | null>(null)
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [uploadingName, setUploadingName] = useState('')
@@ -103,10 +105,12 @@ export function UploadDashboard() {
 
   const loadFiles = async () => {
     try {
-      const body = await api<{ files: UploadedFile[] }>('/admin/files')
+      const body = await api<{ files: UploadedFile[]; usage: StorageUsage }>('/admin/files')
       setFiles(body.files)
+      setUsage(body.usage)
     } catch {
       setFiles([])
+      setUsage(null)
     }
   }
 
@@ -116,8 +120,14 @@ export function UploadDashboard() {
     void loadFiles()
   }, [])
 
+  const exceedsRemaining = Boolean(uploadingFile && usage && uploadingFile.size > usage.remaining)
+
   const uploadFile = async () => {
     if (!uploadingFile || !uploadingName.trim()) return
+    if (usage && uploadingFile.size > usage.remaining) {
+      toast('That file is larger than the remaining storage.', 'danger')
+      return
+    }
     setLoading(true)
     try {
       const form = new FormData()
@@ -165,6 +175,29 @@ export function UploadDashboard() {
           Add documents, images, slides and notes for your class. Organize them by class, subject and date, and delete anything you no longer need.
         </p>
       </div>
+      {usage && (
+        <div className="border-t border-line px-5 py-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-[13px] font-semibold text-muted">Storage</h3>
+            <span className="text-[12px] tabular-nums text-faint">
+              {bytes(usage.bytes)} of {bytes(usage.limitBytes)} · {usage.files} {usage.files === 1 ? 'file' : 'files'}
+            </span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-2">
+            <div
+              className={`h-full rounded-full ${usage.warning ? 'bg-warning' : 'bg-accent'}`}
+              style={{ width: `${Math.min(100, usage.percent)}%` }}
+            />
+          </div>
+          <p className={`mt-2 text-[12px] leading-relaxed ${usage.warning ? 'text-warning' : 'text-faint'}`}>
+            {usage.remaining > 0 ? `${bytes(usage.remaining)} remaining.` : 'Storage is full; uploads are refused.'}
+            {usage.warning && usage.remaining > 0 && ' Above 80% of the R2 limit — uploads will be refused once it is full.'}
+          </p>
+          <p className="mt-1 text-[11.5px] text-faint">
+            Max {bytes(usage.maxFileSize)} per file. Request counts are not exposed to the app.
+          </p>
+        </div>
+      )}
       <div className="border-t border-line px-5 py-4">
         <div className="flex flex-wrap gap-3">
           <Input
@@ -230,7 +263,7 @@ export function UploadDashboard() {
             type="button"
             variant="primary"
             loading={loading}
-            disabled={!uploadingFile || !uploadingName.trim()}
+            disabled={!uploadingFile || !uploadingName.trim() || exceedsRemaining}
             onClick={uploadFile}
           >
             Upload
@@ -240,6 +273,9 @@ export function UploadDashboard() {
           <p className="mt-2 text-[12.5px] text-muted">
             {uploadingFile.name} · {bytes(uploadingFile.size)}
           </p>
+        )}
+        {exceedsRemaining && (
+          <p className="mt-1 text-[12.5px] text-danger">This file is larger than the remaining storage. Delete a file or choose a smaller one.</p>
         )}
       </div>
       <div className="border-t border-line px-5 py-4">

@@ -99,10 +99,18 @@ export interface MeUser {
   createdAt: number
 }
 
+export interface MeConsent {
+  version: string
+  effective: string
+  accepted: boolean
+  acceptedAt: number | null
+}
+
 export interface Me {
   user: MeUser
   streak: number
   seeded: boolean
+  consent: MeConsent
   capabilities: {
     database: boolean
     files: boolean
@@ -169,6 +177,17 @@ export interface ResetRequest {
 export interface Storage {
   used: number
   files: number
+  maxFileSize: number
+}
+
+/** Current R2 usage and the platform allowance shown on the admin dashboard. */
+export interface StorageUsage {
+  bytes: number
+  files: number
+  limitBytes: number
+  remaining: number
+  percent: number
+  warning: boolean
   maxFileSize: number
 }
 

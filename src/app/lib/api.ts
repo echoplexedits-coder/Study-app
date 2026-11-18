@@ -52,15 +52,19 @@ export async function api<T>(path: string, init?: RequestInit & { json?: unknown
 
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false, staleTime: 60_000 })
 export const useAuthStatus = () => useQuery({ queryKey: ['auth-status'], queryFn: () => api<AuthStatus>('/auth/status'), retry: false, staleTime: 60_000 })
-export const useDecks = () => useQuery({ queryKey: ['decks'], queryFn: () => api<{ items: Deck[] }>('/decks') })
+// A page load needs the account plus its data. These shared queries stay fresh
+// for a minute so navigating between library pages does not refetch the same
+// unchanged rows; mutations still invalidate them explicitly.
+export const useDecks = () => useQuery({ queryKey: ['decks'], queryFn: () => api<{ items: Deck[] }>('/decks'), staleTime: 60_000 })
 export const useDeck = (id: string | undefined) =>
   useQuery({
     queryKey: ['deck', id],
     queryFn: () => api<{ deck: Deck; cards: Card[]; sessions: Session[] }>(`/decks/${id}`),
     enabled: Boolean(id),
+    staleTime: 60_000,
   })
-export const useStats = () => useQuery({ queryKey: ['stats'], queryFn: () => api<Stats>('/stats') })
-export const useStorage = () => useQuery({ queryKey: ['storage'], queryFn: () => api<Storage>('/storage') })
+export const useStats = () => useQuery({ queryKey: ['stats'], queryFn: () => api<Stats>('/stats'), staleTime: 60_000 })
+export const useStorage = () => useQuery({ queryKey: ['storage'], queryFn: () => api<Storage>('/storage'), staleTime: 60_000 })
 
 /** The read-only classwork library. Available to every signed-in account. */
 export const useNotes = () =>
@@ -72,7 +76,7 @@ export function noteUrl(key: string, download = false) {
   return `/api/notes/file/${path}${download ? '?download=1' : ''}`
 }
 export const useConsent = () =>
-  useQuery({ queryKey: ['consent'], queryFn: () => api<ConsentStatus>('/legal/status'), retry: false, staleTime: 0 })
+  useQuery({ queryKey: ['consent'], queryFn: () => api<ConsentStatus>('/legal/status'), retry: false, staleTime: 30_000 })
 
 /** Records the accepted policy version and the moment it was accepted. */
 export function acceptPolicies(input: { version: string; terms: boolean; privacy: boolean; age: boolean }) {

@@ -8,6 +8,7 @@ import { clearProgress, clearUser, seedUser } from '../seed'
 import { MAX_ATTACHMENT_BYTES } from '../../shared/types'
 import type { AccountStatus, Me, Stats, Storage } from '../../shared/types'
 import { accountFor, nextStudentId } from '../identity'
+import { POLICY_EFFECTIVE, POLICY_VERSION } from '../../shared/legal'
 
 export const account = new Hono<AppContext>()
 
@@ -93,6 +94,10 @@ account.get('/me', async (c) => {
     const stale = await db.prepare(`SELECT COUNT(*) AS n FROM decks WHERE owner_sub = ? AND shared = 0`).bind(user.sub).first<{ n: number }>()
     if (Number(stale?.n)) await db.prepare(`UPDATE decks SET shared = 1 WHERE owner_sub = ? AND shared = 0`).bind(user.sub).run()
   }
+  const consent = await db
+    .prepare(`SELECT policy_version, accepted_at FROM consents WHERE owner_sub = ? ORDER BY accepted_at DESC LIMIT 1`)
+    .bind(user.sub)
+    .first<{ policy_version: string; accepted_at: number }>()
   const body: Me = {
     user: {
       sub: user.sub,
@@ -108,6 +113,12 @@ account.get('/me', async (c) => {
     },
     streak: streakFrom(await sessionDays(db, user.sub)).current,
     seeded: Boolean(row?.seeded_at),
+    consent: {
+      version: POLICY_VERSION,
+      effective: POLICY_EFFECTIVE,
+      accepted: consent?.policy_version === POLICY_VERSION,
+      acceptedAt: consent?.policy_version === POLICY_VERSION ? consent.accepted_at : null,
+    },
     capabilities: {
       database: true,
       files: Boolean(c.env.FILES),

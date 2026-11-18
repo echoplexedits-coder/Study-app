@@ -33,6 +33,45 @@ const ALLOWED_TYPES = new Set([
 
 const MAX_MB = Math.round(MAX_ATTACHMENT_BYTES / (1024 * 1024))
 
+// The Sites R2 allowance for this project is 1 GB. Keep this as a single
+// server-side limit: the dashboard only reports it, and uploads are refused
+// against the bytes actually present in the bucket.
+const R2_LIMIT_BYTES = 1024 * 1024 * 1024
+const R2_WARN_RATIO = 0.8
+
+async function listObjects(bucket: R2Bucket): Promise<R2Object[]> {
+  const objects: R2Object[] = []
+  let cursor: string | undefined
+  while (true) {
+    const result = cursor
+      ? await bucket.list({ cursor, include: ['httpMetadata'] })
+      : await bucket.list({ include: ['httpMetadata'] })
+    objects.push(...result.objects)
+    if (!result.truncated) break
+    cursor = result.cursor
+  }
+  return objects
+}
+
+function usageFor(objects: R2Object[]) {
+  const bytes = objects.reduce((sum, object) => sum + object.size, 0)
+  const remaining = Math.max(0, R2_LIMIT_BYTES - bytes)
+  return {
+    bytes,
+    files: objects.length,
+    limitBytes: R2_LIMIT_BYTES,
+    remaining,
+    percent: Math.round((bytes / R2_LIMIT_BYTES) * 1000) / 10,
+    warning: bytes >= R2_LIMIT_BYTES * R2_WARN_RATIO,
+    maxFileSize: MAX_ATTACHMENT_BYTES,
+  }
+}
+
+function sizeLabel(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`
+}
+
 // Card attachments and deck covers also live in FILES, but they are not
 // classwork. Their keys have a stable shape, so the admin file list can skip
 // them instead of showing someone's private flashcard image as a handout.
@@ -55,25 +94,16 @@ adminFiles.get('/admin/files', requireAdmin, async (c) => {
   if (!c.env.FILES) {
     return c.json({ error: 'storage_missing', message: 'No file storage is attached yet.' }, 503)
   }
-  const files: { name: string; size: number; contentType: string | null; uploadedAt: number }[] = []
-  let cursor: string | undefined
-  while (true) {
-    const result = cursor
-      ? await c.env.FILES.list({ cursor, include: ['httpMetadata'] })
-      : await c.env.FILES.list({ include: ['httpMetadata'] })
-    for (const entry of result.objects) {
-      if (isLibraryObject(entry.key)) continue
-      files.push({
-        name: entry.key,
-        size: entry.size,
-        contentType: entry.httpMetadata?.contentType ?? null,
-        uploadedAt: entry.uploaded.getTime(),
-      })
-    }
-    if (!result.truncated) break
-    cursor = result.cursor
-  }
-  return privateJson(c, { files })
+  const objects = await listObjects(c.env.FILES)
+  const files = objects
+    .filter((entry) => !isLibraryObject(entry.key))
+    .map((entry) => ({
+      name: entry.key,
+      size: entry.size,
+      contentType: entry.httpMetadata?.contentType ?? null,
+      uploadedAt: entry.uploaded.getTime(),
+    }))
+  return privateJson(c, { files, usage: usageFor(objects) })
 })
 
 adminFiles.post('/admin/files', requireAdmin, async (c) => {
@@ -94,6 +124,17 @@ adminFiles.post('/admin/files', requireAdmin, async (c) => {
   if (file.size <= 0) return c.json({ error: 'empty_file', message: 'That file looks empty.' }, 400)
   if (file.size > MAX_ATTACHMENT_BYTES) {
     return c.json({ error: 'file_too_large', message: `Files are limited to ${MAX_MB} MB.` }, 413)
+  }
+  const existing = await listObjects(c.env.FILES)
+  const used = existing.reduce((sum, object) => sum + object.size, 0)
+  if (used + file.size > R2_LIMIT_BYTES) {
+    return c.json(
+      {
+        error: 'storage_full',
+        message: `Not enough storage: ${sizeLabel(Math.max(0, R2_LIMIT_BYTES - used))} remains of the ${sizeLabel(R2_LIMIT_BYTES)} limit, but this file is ${sizeLabel(file.size)}. Delete a file first.`,
+      },
+      507,
+    )
   }
   const head = new Uint8Array(await file.slice(0, 16).arrayBuffer())
   if (!signatureOk(type, head)) {

@@ -5,7 +5,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'rea
 
 import { Shell } from './components/Shell'
 import { Button, Spinner, ToastProvider } from './components/ui'
-import { ApiError, useConsent, useMe } from './lib/api'
+import { ApiError, useMe } from './lib/api'
 import { AdminUsers } from './pages/AdminUsers'
 import { ForgotPasswordPage, ResetPasswordPage, SignInPage, SignUpPage } from './pages/Auth'
 import { AccountSuspended, ChooseUsername } from './pages/ChooseUsername'
@@ -41,7 +41,6 @@ function Loading() {
  */
 function RequireAuth() {
   const me = useMe()
-  const consent = useConsent()
   const { pathname } = useLocation()
   if (me.isLoading) return <Loading />
   // The landing page is the front door; a deep link to an app route gets a
@@ -54,9 +53,7 @@ function RequireAuth() {
   // The username gate comes before consent: no account reaches the library
   // without owning exactly one name.
   if (me.data?.user.needsUsername) return <ChooseUsername />
-  if (consent.isLoading) return <Loading />
-  if (consent.error) return <SetupNeeded message={(consent.error as Error).message} />
-  if (consent.data && !consent.data.accepted) return <ConsentScreen />
+  if (me.data && !me.data.consent.accepted) return <ConsentScreen />
   return <Outlet />
 }
 

@@ -100,10 +100,18 @@ notes.on(['GET', 'HEAD'], '/notes/file/*', async (c) => {
   const headers = new Headers({
     'content-type': head.httpMetadata?.contentType ?? 'application/octet-stream',
     'content-disposition': `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(parsed.name)}`,
-    'content-length': String(head.size),
-    'cache-control': 'private, max-age=0, must-revalidate',
+    // Object keys are unique per upload, so the bytes behind a URL never change.
+    // Keep this private: one signed-in student's browser cache must never serve
+    // another person's document, but repeating a preview should not re-download it.
+    'cache-control': 'private, max-age=3600, must-revalidate',
+    vary: 'Cookie',
     'x-content-type-options': 'nosniff',
   })
   if (head.etag) headers.set('etag', head.etag)
+  const ifNoneMatch = c.req.header('if-none-match')
+  if (head.etag && ifNoneMatch?.split(',').some((value) => value.trim() === head.etag || value.trim() === '*')) {
+    return new Response(null, { status: 304, headers })
+  }
+  headers.set('content-length', String(head.size))
   return new Response(c.req.method === 'HEAD' ? null : object!.body, { status: 200, headers })
 })

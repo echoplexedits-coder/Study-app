@@ -18,7 +18,10 @@ export function ConsentScreen() {
   const queryClient = useQueryClient()
   const accept = useMutation({
     mutationFn: () => acceptPolicies({ version: POLICY_VERSION, terms, privacy, age }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['consent'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
+      void queryClient.invalidateQueries({ queryKey: ['consent'] })
+    },
   })
   const ready = terms && privacy && age && !accept.isPending
 
