@@ -1,36 +1,46 @@
-Fix the missing admin upload button by adding the real account email to the live roles table.
+Admin access and role troubleshooting
 
-State found in production D1 'study' roles table:
-- alex@example.com | admin | 1   (stale dev-user row from earlier local tests)
-- echoplexedits@gmail.com row is missing
+Roles live in the D1 `roles` table, keyed by lowercased email. The row is only
+applied when the signed-in identity is provider-verified (`roleFor` in
+`src/worker/db.ts`):
 
-The app resolves roles by email (src/worker/db.ts roleFor). A sign-in as
-echoplexedits@gmail.com lands as a student because there is no matching row,
-even though the schema seeds that email as admin. That is why the profile
-showed no upload button.
+- `local:*` (username/password) accounts never receive an email-based role.
+- `google:*` requires `email_verified === true`.
+- Freebuff and other provider identities are trusted.
 
-Exact fix (production D1 console or authenticated wrangler shell):
-  INSERT OR IGNORE INTO roles (email, role, created_at)
-    VALUES ('echoplexedits@gmail.com', 'admin',
-            CAST(strftime('%s','now') AS INTEGER) * 1000);
-  DELETE FROM roles WHERE email = 'alex@example.com';
+Consequences:
 
-No code change, no schema change, no migration needed. The app already has the
-correct role model, seed, client gates, and requireAdmin guard.
+1. A password account with the admin's email stays a student. It cannot claim
+   the role or merge into the provider account.
+2. Password sign-up is refused for an email that already belongs to a provider
+   account or to a role row (`emailConflict`).
+3. A role row by itself does not make a password account an admin. The account
+   must sign in through Google or Freebuff.
 
-Verification (no console):
-1. Sign out, sign back in as echoplexedits@gmail.com.
-2. Settings badge under avatar must read "Admin — can edit the library".
-3. Library must show "Your decks" and "New deck".
-4. Any owned deck must show the card attachment upload control.
-5. A different email must still show "Student — read-only library" and cannot
-   create / upload / restore.
+If an expected admin sees the student badge:
 
-Caution: do not widen the client gating to show upload for everyone. Normal
-users must still be blocked from upload, remove, and edit. The fix changes only
-the role data, not the permission logic.
+1. Check the sign-in method first. Password sign-in can never be admin.
+2. Check that the `roles` row uses the exact lowercased Google or Freebuff
+   account email.
+3. Check that the account is not suspended; suspension blocks every API call.
+4. Check the Google account reports a verified email. An unverified Google
+   address is deliberately treated as a student.
 
-When to deploy:
-The role is resolved from the live D1 at runtime, so deploying before the row
-exists will not unblock the button. Deploy app code only if there is code to
-ship after the row is in place and the badge confirms admin.
+Do not add or delete role rows blindly. In particular, the old advice in this
+file about a missing production role and an `alex@example.com` row described a
+local-test artifact and must not be applied to the live database.
+
+The last admin cannot be demoted, suspended or deleted. The shared check is
+`isLastAdminChange` in `src/worker/db.ts`, used by role changes, account
+suspension and self-deletion; `tests/admin-guard.test.ts` covers it.
+
+Verification without a database console:
+
+1. Sign out and back in with the intended provider account.
+2. Settings should show "Admin — can edit the library".
+3. The library should offer New deck and admin uploads.
+4. A different account must still show "Student — read-only library" and receive
+   403 from admin endpoints.
+
+For Google admin access, enable 2-Step Verification on that Google account. The
+app does not perform that check; it is an account-security step.
