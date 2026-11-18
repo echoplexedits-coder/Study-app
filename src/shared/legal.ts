@@ -2,8 +2,8 @@
 // Bump POLICY_VERSION and POLICY_EFFECTIVE whenever the text changes in a way
 // that needs fresh consent; old acceptances stay in the database as history.
 
-export const POLICY_VERSION = '1.0'
-export const POLICY_EFFECTIVE = '4 November 2026'
+export const POLICY_VERSION = '1.1'
+export const POLICY_EFFECTIVE = '18 November 2026'
 
 /** The operator's published contact address, shown on the intro page and the policy pages. */
 export const CONTACT_EMAIL = 'echoplexedits@gmail.com'

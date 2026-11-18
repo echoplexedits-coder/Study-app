@@ -89,7 +89,7 @@ const TERMS: Section[] = [
   {
     h: 'Accounts and eligibility',
     list: [
-      `You sign in with Freebuff or Google. The app receives a provider account id, your name, email address and profile picture URL from that provider. It never receives your password.`,
+      `You can sign in with Freebuff, Google, or a username and password. Freebuff and Google provide a provider account id, name, email address and profile picture URL. A password account stores a PBKDF2 password hash, never the password itself.`,
       `Give accurate account information and keep access to your sign-in method secure. You are responsible for activity that happens under your account.`,
       `Use one account per person. Do not create accounts automatically or in bulk, and do not share an account with someone else.`,
       `If you are under 18, use the app only with the permission of a parent, guardian or teacher who agrees to these terms on your behalf.`,
@@ -100,15 +100,15 @@ const TERMS: Section[] = [
     h: 'Roles: admin and student',
     p: [
       `The site admin can add, change and remove decks, cards, attachments and classwork, and can see reports, audit records and backups. Students can read the class library and record their own study progress. An admin account is a technical role in this app, not a teacher qualification or an institutional appointment.`,
-      `Content published by the admin is class material uploaded to this app. It is not checked, approved or endorsed by any school or board.`,
+      `Only the site admin can upload or edit class material. Student accounts are read-only: they can search, preview and download the class library and record their own study progress. Class material is uploaded only where the admin has the right to share it. It is not checked, approved or endorsed by any school or board.`,
     ],
   },
   {
     h: 'Your content and the permission you give us',
     p: [
-      `You keep ownership of the decks, cards and files you create. See the Copyright Policy for how ownership works.`,
-      `To run the app, you give the operator a non-exclusive, worldwide, royalty-free permission to store, copy, display, back up and moderate the content you upload, only for operating and protecting the app. That permission ends when the content is deleted, except for copies retained in a backup or a moderation record.`,
-      `Upload only content you created, content you have permission to use, or content whose use is otherwise allowed by law. Do not upload other people's personal information, especially information about children, without their or their guardian's permission.`,
+      `Only the site admin can create the class library: decks, cards, attachments and classwork. Students can read that material and record their own study progress; they do not upload or edit class material.`,
+      `The site admin keeps ownership of the material they upload. To run the app, the admin grants the service a non-exclusive, worldwide, royalty-free permission to store, copy, display, back up and moderate that material, only for operating and protecting the app. That permission ends when the material is deleted, except for copies retained in a backup or a moderation record.`,
+      `The site admin uploads only material they created, material they have permission or a licence to use, or material whose use is otherwise allowed by law. Do not upload other people's personal information, especially information about children, without permission.`,
     ],
   },
   {
@@ -122,7 +122,7 @@ const TERMS: Section[] = [
     p: [`Access may be suspended or ended, and content removed, if:`],
     list: [
       `you break these terms or the Acceptable Use Policy;`,
-      `a copyright or other rights complaint is upheld against content you uploaded;`,
+      `a copyright or other rights complaint is upheld against class material uploaded by the site admin;`,
       `your account appears to be compromised, shared, automated or used to attack the service or another account;`,
       `continuing to provide access would break the law or a lawful order; or`,
       `you abuse the report, contact or deletion-request systems, including by filing knowingly false reports.`,
@@ -145,7 +145,7 @@ const TERMS: Section[] = [
   {
     h: 'Educational disclaimer',
     p: [
-      `myclassroom is a study aid built around flashcards, multiple-choice practice and a matching game. It does not teach a curriculum, mark work for a qualification, or replace a teacher, textbook or school record. Content is written by the operator or by users and may contain mistakes.`,
+      `MyClassroom is a class-notes library with flashcards, multiple-choice practice and a matching game. It does not teach a curriculum, mark work for a qualification, or replace a teacher, textbook or school record. Class material is uploaded by the site admin and may contain mistakes.`,
       `Using the app does not guarantee any exam result, grade, admission or outcome, and nothing in it is academic, legal, medical or financial advice.`,
     ],
   },
@@ -159,7 +159,7 @@ const TERMS: Section[] = [
   {
     h: 'Your responsibility',
     p: [
-      `You are responsible for the content you upload and for claims that arise from it, including claims that it infringes copyright, defames someone or discloses personal information without permission.`,
+      `The site admin is responsible for class material they upload and for claims that arise from it, including claims that it infringes copyright, defames someone or discloses personal information without permission. Students are responsible for their own account use, reports and messages.`,
     ],
   },
   {
@@ -194,12 +194,19 @@ const PRIVACY: Section[] = [
   {
     h: 'What the app stores',
     list: [
-      `Account details from your sign-in provider: a provider account id, name, email address and profile picture URL. The app never sees or stores your password.`,
-      `Content you create or that is published for you: decks, card text, images or documents attached to cards, and classwork files uploaded by the admin.`,
+      `Account details: for Freebuff or Google, a provider account id, name, email address and profile picture URL; for username/password accounts, a full name, email address and PBKDF2 password hash. The app never stores a plaintext password. It also stores the username and permanent student ID.`,
+      `Class material: decks, card text, images or documents attached to cards, and classwork files uploaded by the site admin. Students do not upload class material.`,
       `Study activity: answers per card, mastery, streaks, due dates, and each session's mode, score and duration.`,
       `Consent records: the policy version you accepted, when you accepted it, and which screen recorded it.`,
       `Safety records: reports you file, deletion requests you send, and messages sent through the Contact page (name, email, topic, text).`,
       `Security logs: an audit trail of privileged actions such as role changes, uploads, deletes and restores, kept with the account id and, until you delete your account, the email address.`,
+    ],
+  },
+  {
+    h: 'The personal data kept, in plain language',
+    p: [
+      `For a signed-in account, the app keeps: your name and, for provider sign-in, profile picture URL; your email address; your username; a password hash if you use username/password sign-in (never the plaintext password); a permanent student ID; and study progress such as answers, mastery, streaks, due dates and session scores and durations.`,
+      `It also keeps consent records, reports or requests you file, contact messages you send, and privileged-action audit records. It does not collect health, biometric, caste, religion, financial or precise location data.`,
     ],
   },
   {
@@ -233,8 +240,9 @@ const PRIVACY: Section[] = [
   {
     h: 'Children, classrooms and guardian permission',
     p: [
-      `myclassroom is a classroom study tool, so some users may be under 18. The app does not verify age and does not run a separate verifiable parental-consent workflow; it relies on the confirmation on the consent screen that a parent, guardian or teacher has agreed.`,
-      `If you are a parent or guardian and a child's data was added without your permission, use the Contact page with the privacy topic and it will be removed. India's Digital Personal Data Protection Act, 2023 treats children's data as requiring verifiable parental consent, with limited exemptions; how that applies to a tool used in a classroom needs professional legal review.`,
+      `MyClassroom is a classroom study tool, so some users may be under 18. The app asks you to confirm that you are 18 or older, or that a parent, guardian or teacher has agreed to your use. It does not verify age and does not run a separate verifiable parental-consent workflow.`,
+      `For parents and guardians: the account keeps the child's name, email address, username, password hash (if password sign-in is used), student ID and study progress. It does not collect a phone number, postal address, date of birth or school records. If you did not agree to this use, or want a copy or deletion, use the Contact page with the privacy topic. India's Digital Personal Data Protection Act, 2023 treats children's data as requiring verifiable parental consent, with limited exemptions; how that applies to a tool used in a classroom needs professional legal review.`,
+      `If you are a parent or guardian and a child's data was added without your permission, use the Contact page with the privacy topic and it will be removed.`
     ],
   },
   {
@@ -269,7 +277,7 @@ const PRIVACY: Section[] = [
     h: 'Your rights',
     list: [
       `Access and portability: Settings → Legal & safety → Download my data gives you a JSON file with your account, content, progress, sessions, consent records and requests.`,
-      `Correction: edit your decks and cards in the app; your name and picture come from your sign-in provider.`,
+      `Correction: use Settings for account details that can be edited, or the Contact page for anything else; the site admin can correct class material.`,
       `Deletion: delete your account from Settings, or send a deletion request through the Contact page if you cannot sign in.`,
       `Withdraw consent: deleting the account withdraws it.`,
       `Grievance: use the Contact page and choose the privacy topic. Describe the issue and the account it concerns.`,
@@ -285,7 +293,7 @@ const PRIVACY: Section[] = [
   {
     h: 'Cookies and local storage',
     list: [
-      `The app uses a session cookie so you stay signed in. With Freebuff sign-in it is set by the auth provider; with Google sign-in the app sets an HttpOnly, SameSite=Lax cookie, marked Secure over HTTPS, that holds a signed session token.`,
+      `The app uses a session cookie so you stay signed in. Freebuff sets its own auth cookie; Google sets a signed, HttpOnly, SameSite=Lax cookie on HTTPS; username/password sign-in sets an HttpOnly, SameSite=Lax cookie named myclassroom_session (with a __Host- prefix on HTTPS).`,
       `Google sign-in sets a short-lived state cookie (about ten minutes) to protect the OAuth flow against cross-site request forgery.`,
       `No analytics, advertising or preference cookies are set by the app, and the app itself does not write to localStorage or sessionStorage.`,
       `Cloudflare may set security cookies at its edge (for example for bot protection). Those are controlled by the hosting provider, not by the app's code.`,
@@ -296,7 +304,7 @@ const PRIVACY: Section[] = [
     h: 'Security',
     list: [
       `HTTPS with HSTS in production, a strict Content Security Policy, frame denial and no inline scripts.`,
-      `Session cookies are HttpOnly and SameSite=Lax; passwords are never handled by the app.`,
+      `Session cookies are HttpOnly and SameSite=Lax; password accounts store only a PBKDF2 hash, never the plaintext password.`,
       `Every API query is scoped to the signed-in account, and content changes are limited to admin accounts.`,
       `Uploads are checked against an allowlist and their byte signatures, and downloaded files are forced to download unless they are images.`,
       `Privileged actions are written to an audit log, and no API keys or database credentials are sent to the browser.`,
@@ -315,32 +323,30 @@ const COPYRIGHT: Section[] = [
   {
     h: 'What you own',
     p: [
-      `You keep the copyright you already hold in the decks, cards, text, images and documents you create and upload. Using the app does not transfer your copyright to the operator.`,
+      `The site admin keeps the copyright they already hold in the class material they create and upload. Using the app does not transfer copyright to the operator.`,
       `The app's own name, design, code and interface belong to the operator. Nothing here gives you a licence to reuse them outside the app.`,
-      `Classwork files uploaded by the admin remain the uploader's material. The operator does not claim ownership of them and cannot grant permission to reuse them.`,
+      `Classwork files uploaded by the site admin remain the uploader's material or the rights holder's. The operator does not claim ownership and cannot grant permission to reuse them.`,
     ],
   },
   {
     h: 'The permission you give the app',
     p: [
-      `You give the operator a non-exclusive, worldwide, royalty-free permission to store, copy, display, back up and moderate your content so the app can work. This includes showing shared decks and card attachments to signed-in users and keeping a backup copy for disaster recovery.`,
-      `The permission ends when the content is deleted, except for copies that remain in a backup or a moderation record for as long as those are kept.`,
+      `The site admin grants the service a non-exclusive, worldwide, royalty-free permission to store, copy, display, back up and moderate class material so the app can work. This includes showing shared decks and card attachments to signed-in users and keeping a backup copy for disaster recovery.`,
+      `The permission ends when the material is deleted, except for copies that remain in a backup or a moderation record for as long as those are kept.`,
     ],
   },
   {
-    h: 'What you may upload',
-    list: [
-      `Your own work.`,
-      `Material you have permission or a licence to use, including material under a licence that allows this use.`,
-      `Material whose use is otherwise permitted by law.`,
-      `Do not upload textbook pages, question banks, past papers or other publishers' material unless you have permission or the use is permitted by law.`,
-      `Do not upload someone else's image, document or personal information without their permission.`,
+    h: 'Who may upload, and on what basis',
+    p: [
+      `Only the site admin can upload class material to MyClassroom. Student accounts are read-only and cannot upload or edit decks, cards, attachments or classwork.`,
+      `The site admin may upload only material they created, material they have permission or a licence to use, or material whose use is otherwise permitted by law. Textbook pages, question banks, past papers and other publishers' material must not be uploaded without permission or a legal basis.`,
+      `Uploads must not contain another person's private information, especially information about children, without permission.`,
     ],
   },
   {
     h: 'Reporting copyright infringement',
     p: [
-      `Anyone can report content they believe infringes copyright, whether or not they have an account. Use the copyright report in Settings (signed-in users) or the Contact page with the copyright topic (no account needed).`,
+      `Anyone can report content they believe infringes copyright, whether or not they have an account. Use the copyright report in Settings (signed-in users) or the Contact page at /contact with the copyright topic (no account needed).`,
     ],
     list: [
       `your name and an email address the operator can reply to;`,
@@ -358,9 +364,9 @@ const COPYRIGHT: Section[] = [
     ],
   },
   {
-    h: 'If your upload was reported',
+    h: 'If material you are responsible for was reported',
     p: [
-      `You can respond through the Contact page: explain why you have the right to use the material, or send the permission or licence you rely on. Material may be restored if the complaint is withdrawn, shown to be mistaken, or does not hold up, subject to what the law requires.`,
+      `If material you are responsible for is reported, you can respond through the Contact page: explain why you have the right to use it, or send the permission or licence you rely on. Material may be restored if the complaint is withdrawn, shown to be mistaken, or does not hold up, subject to what the law requires.`,
     ],
   },
   {
@@ -376,7 +382,7 @@ const ACCEPTABLE_USE: Section[] = [
   {
     h: 'What this policy covers',
     p: [
-      `This policy applies to everything you put into myclassroom and everything you do with it: decks, cards, text, attachments, classwork files, reports, contact messages and the way you use the service. It applies to everyone, including the admin.`,
+      `This policy applies to everything you do with MyClassroom and to any content you are allowed to add. Only the site admin can upload class material; everyone can send reports and contact messages. It applies to everyone, including the admin.`,
     ],
   },
   {
@@ -409,8 +415,8 @@ const ACCEPTABLE_USE: Section[] = [
   {
     h: 'Files and uploads',
     p: [
-      `Card attachments accept PNG, JPEG, WebP, GIF, PDF, Word, PowerPoint, Excel, plain text, CSV, Markdown, RTF and EPUB, up to 90 MB each. Classwork uploads accept the same document and image types. The server checks the file's actual bytes, not only the type the browser declares, and other file types are refused.`,
-      `Upload only what you have the right to share. Files uploaded here can be seen by signed-in users when the deck they belong to is part of the shared class library.`,
+      `Only the site admin can upload. Card attachments and classwork accept PNG, JPEG, WebP, GIF, PDF, Word, PowerPoint, Excel, plain text, CSV, Markdown, RTF and EPUB, up to 90 MB each. The server checks the file's actual bytes, not only the type the browser declares, and other file types are refused.`,
+      `The site admin uploads only material they have the right to share. Class material can be seen by signed-in users when it is part of the shared class library. Rights holders can request removal through the Copyright page or the Contact page at /contact with the copyright topic.`,
     ],
   },
   {
@@ -461,7 +467,7 @@ export function CopyrightPage() {
   return (
     <LegalShell
       title="Copyright Policy"
-      intro="Who owns what, what you may upload, and how a copyright complaint is made and handled."
+      intro="Who owns what, who may upload and on what basis, and how a copyright complaint is made and handled."
       sections={COPYRIGHT}
     />
   )
