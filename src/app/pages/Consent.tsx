@@ -32,7 +32,7 @@ export function ConsentScreen() {
           <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-faint">Version {POLICY_VERSION}</p>
           <h1 className="mt-2 text-[26px] font-bold tracking-[-0.02em]">Before you start</h1>
           <p className="mt-2 text-[14px] leading-relaxed text-muted">
-            myclassroom stores your study progress and anything you upload. Please read these and confirm each statement. Nothing is pre-selected.
+            myclassroom stores your study progress. Only the site admin uploads class material; student accounts are read-only. Please read these and confirm each statement. Nothing is pre-selected.
           </p>
 
           <div className="mt-6 flex flex-col gap-4">
@@ -52,12 +52,21 @@ export function ConsentScreen() {
               <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline underline-offset-2">
                 Privacy Policy
               </a>{' '}
-              and consent to my account details, study activity and uploads being stored and processed as described there.
+              and consent to my account details, study activity and messages being stored and processed as described there.
             </Statement>
             <Statement checked={age} onChange={setAge}>
               I am 18 or older, or I am using myclassroom with the permission of a parent, guardian or teacher who has agreed to this on my behalf.
             </Statement>
           </div>
+
+          <section className="mt-5 rounded-card border border-line bg-surface-2 p-4">
+            <h2 className="text-[13px] font-semibold">For parents and guardians</h2>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+              A student account keeps the student's name, email address, username, password hash (only if password sign-in is used), student ID and study
+              progress. The app does not ask for a date of birth, phone number, postal address or school records. Only the site admin can upload class material.
+              A parent or guardian can ask for a copy or deletion through the Contact page.
+            </p>
+          </section>
 
           {accept.error && <p className="mt-4 text-[13px] text-danger">{(accept.error as Error).message}</p>}
 
